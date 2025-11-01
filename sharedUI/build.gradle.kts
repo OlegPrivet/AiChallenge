@@ -1,5 +1,5 @@
+
 import org.jetbrains.compose.ExperimentalComposeLibrary
-import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
 
 plugins {
@@ -43,14 +43,16 @@ kotlin {
             implementation(libs.ktor.client.serialization)
             implementation(libs.ktor.serialization.json)
             implementation(libs.ktor.client.logging)
-            implementation(libs.decompose)
-            implementation(libs.decompose.compose)
+            api(libs.decompose)
+            api(libs.decompose.compose)
+            api(libs.essenty.coroutines)
             implementation(libs.kotlinx.serialization.json)
-            implementation(libs.koin.core)
-            implementation(libs.koin.compose)
+            api(libs.koin.core)
+            api(libs.koin.compose)
             implementation(libs.multiplatformSettings)
             implementation(libs.kotlinx.datetime)
             implementation(libs.room.runtime)
+            implementation(libs.icons)
         }
 
         commonTest.dependencies {
@@ -87,8 +89,18 @@ kotlin {
 }
 
 buildConfig {
-    // BuildConfig configuration here.
-    // https://github.com/gmazzo/gradle-buildconfig-plugin#usage-in-kts
+    // Generate BuildConfig class with API configuration
+    packageName = "org.oleg.ai.challenge"
+
+    // Read API key from local.properties or environment variable
+    // To set the API key, add to local.properties: OPENROUTER_API_KEY=your_api_key_here
+    // Or set environment variable: export OPENROUTER_API_KEY=your_api_key_here
+    val apiKey = project.findProperty("OPENROUTER_API_KEY") as? String
+        ?: System.getenv("OPENROUTER_API_KEY")
+
+    buildConfigField("String", "OPENROUTER_API_KEY", "\"$apiKey\"")
+    buildConfigField("String", "OPENROUTER_BASE_URL", "\"https://openrouter.ai/api/v1/\"")
+    buildConfigField("String", "DEFAULT_MODEL", "\"qwen/qwen3-coder:free\"")
 }
 
 room {

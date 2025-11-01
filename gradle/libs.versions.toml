@@ -9,6 +9,7 @@ kermit = "2.0.8"
 kotlinx-coroutines = "1.10.2"
 ktor = "3.3.1"
 decompose = "3.4.0"
+essenty = "2.5.0"
 kotlinx-serialization = "1.9.0"
 koin = "4.1.1"
 multiplatformSettings = "1.3.0"
@@ -16,6 +17,7 @@ kotlinx-datetime = "0.7.1"
 room = "2.8.3"
 ksp = "2.2.21-2.0.4"
 buildConfig = "5.7.0"
+icons = "1.7.3"
 
 [libraries]
 
@@ -34,6 +36,7 @@ ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "kto
 ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
 decompose = { module = "com.arkivanov.decompose:decompose", version.ref = "decompose" }
 decompose-compose = { module = "com.arkivanov.decompose:extensions-compose", version.ref = "decompose" }
+essenty-coroutines = { module = "com.arkivanov.essenty:lifecycle-coroutines", version.ref = "essenty" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
 koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin" }
@@ -41,6 +44,7 @@ multiplatformSettings = { module = "com.russhwolf:multiplatform-settings-no-arg"
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+icons = { module = "org.jetbrains.compose.material:material-icons-core", version.ref = "icons"}
 
 [plugins]
 
