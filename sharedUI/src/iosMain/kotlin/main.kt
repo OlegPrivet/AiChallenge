@@ -9,7 +9,7 @@ import platform.UIKit.UIViewController
 import platform.UIKit.setStatusBarStyle
 
 fun MainViewController(): UIViewController = ComposeUIViewController { 
-    App(onThemeChanged = { ThemeChanged(it) })
+    App()
 }
 
 @Composable
