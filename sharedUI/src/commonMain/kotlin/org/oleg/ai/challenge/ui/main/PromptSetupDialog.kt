@@ -1,10 +1,24 @@
 package org.oleg.ai.challenge.ui.main
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -17,13 +31,17 @@ fun PromptSetupDialog(
     if (!visible) return
 
     var systemPrompt by remember { mutableStateOf("") }
-    var assistantPrompt by remember { mutableStateOf("") }
+    var assistantPrompt by remember { mutableStateOf("""
+        {
+            "header": "Заголовок ответа",
+            "content":"Строка с ответом"
+        }
+    """.trimIndent()) }
 
     // Reset local state when dialog is shown
     LaunchedEffect(visible) {
         if (visible) {
             systemPrompt = ""
-            assistantPrompt = ""
         }
     }
 
@@ -86,9 +104,9 @@ fun PromptSetupDialog(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(120.dp),
-                        placeholder = { Text("Enter assistant prompt (optional)...") },
                         maxLines = 5,
-                        textStyle = MaterialTheme.typography.bodyMedium
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        enabled = false
                     )
                 }
             }

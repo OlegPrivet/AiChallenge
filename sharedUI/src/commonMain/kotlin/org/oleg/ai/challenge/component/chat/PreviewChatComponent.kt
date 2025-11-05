@@ -6,9 +6,9 @@ import com.arkivanov.decompose.value.Value
 class PreviewChatComponent(
     override val messages: Value<List<ChatMessage>> = MutableValue(
         listOf(
-            ChatMessage(id = "1", text = "Hello!", isFromUser = true),
-            ChatMessage(id = "2", text = "Hi there! How can I help you?", isFromUser = false),
-            ChatMessage(id = "3", text = "This is a preview", isFromUser = true)
+            ChatMessage(id = "1", text = InputText.User("Hello!"), isFromUser = true),
+            ChatMessage(id = "2", text = InputText.Assistant(content = "Hi there! How can I help you?"), isFromUser = false),
+            ChatMessage(id = "3", text = InputText.User("This is a preview"), isFromUser = true)
         )
     ),
     override val inputText: Value<String> = MutableValue(""),

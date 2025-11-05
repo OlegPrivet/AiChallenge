@@ -10,8 +10,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
+import org.oleg.ai.challenge.data.network.json
 import org.oleg.ai.challenge.data.network.service.ChatApiService
-import org.oleg.ai.challenge.util.JsonFormatter
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -20,7 +20,7 @@ class DefaultChatComponent(
     private val chatApiService: ChatApiService,
     private val onNavigateBack: () -> Unit,
     initialSystemPrompt: String = "",
-    initialAssistantPrompt: String = ""
+    initialAssistantPrompt: String = "",
 ) : ChatComponent, ComponentContext by componentContext {
 
     private val logger = Logger.withTag("DefaultChatComponent")
@@ -52,7 +52,7 @@ class DefaultChatComponent(
             initialMessages.add(
                 ChatMessage(
                     id = generateId(),
-                    text = initialSystemPrompt,
+                    text = InputText.System(initialSystemPrompt),
                     isFromUser = false,
                     role = MessageRole.SYSTEM,
                     isVisibleInUI = false
@@ -64,7 +64,7 @@ class DefaultChatComponent(
             initialMessages.add(
                 ChatMessage(
                     id = generateId(),
-                    text = initialAssistantPrompt,
+                    text = InputText.Assistant(prompt = initialAssistantPrompt),
                     isFromUser = false,
                     role = MessageRole.ASSISTANT,
                     isVisibleInUI = false
@@ -86,7 +86,7 @@ class DefaultChatComponent(
         // Add user message to chat
         val userMessage = ChatMessage(
             id = generateId(),
-            text = text,
+            text = InputText.User(text),
             isFromUser = true,
             role = MessageRole.USER,
             isVisibleInUI = true
@@ -115,7 +115,11 @@ class DefaultChatComponent(
                     }
                     org.oleg.ai.challenge.data.network.model.ChatMessage(
                         role = apiRole,
-                        content = uiMessage.text
+                        content = when (val text = uiMessage.text) {
+                            is InputText.Assistant -> text.prompt ?: text.content!!
+                            is InputText.System -> text.text
+                            is InputText.User -> text.text
+                        }
                     )
                 }
 
@@ -133,7 +137,7 @@ class DefaultChatComponent(
                             result.data.choices.forEach { choice ->
                                 logger.d { "Received AI response: ${choice.message.content}" }
                                 // Format JSON if the response is JSON, otherwise keep as-is
-                                val formattedText = JsonFormatter.formatIfJson(choice.message.content)
+                                val formattedText = json.decodeFromString<InputText.Assistant>(choice.message.content)
                                 val aiMessage = ChatMessage(
                                     id = generateId(),
                                     text = formattedText,
@@ -177,7 +181,7 @@ class DefaultChatComponent(
         if (systemPrompt != _systemPrompt.value && systemPrompt.isNotEmpty()) {
             val newSystemMessage = ChatMessage(
                 id = generateId(),
-                text = systemPrompt,
+                text = InputText.System(systemPrompt),
                 isFromUser = false,
                 role = MessageRole.SYSTEM,
                 isVisibleInUI = false
@@ -201,7 +205,7 @@ class DefaultChatComponent(
     private fun addErrorMessage(errorText: String) {
         val errorMessage = ChatMessage(
             id = generateId(),
-            text = errorText,
+            text = InputText.User(text = errorText),
             isFromUser = false
         )
         _messages.value = _messages.value + errorMessage

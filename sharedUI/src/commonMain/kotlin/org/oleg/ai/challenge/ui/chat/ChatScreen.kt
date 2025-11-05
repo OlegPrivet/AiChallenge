@@ -35,15 +35,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.oleg.ai.challenge.component.chat.ChatComponent
 import org.oleg.ai.challenge.component.chat.ChatMessage
+import org.oleg.ai.challenge.component.chat.InputText
 import org.oleg.ai.challenge.component.chat.PreviewChatComponent
 import org.oleg.ai.challenge.theme.AppTheme
-import org.oleg.ai.challenge.util.JsonFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,9 +198,7 @@ private fun LoadingIndicator() {
 
 @Composable
 private fun ChatMessageItem(message: ChatMessage) {
-    val isJsonMessage = remember(message.text) {
-        JsonFormatter.isJson(message.text)
-    }
+    if (message.text is InputText.System) return
 
     Row(
         modifier = Modifier
@@ -221,17 +218,25 @@ private fun ChatMessageItem(message: ChatMessage) {
                     MaterialTheme.colorScheme.secondaryContainer
             )
         ) {
-            Text(
-                text = message.text,
-                modifier = Modifier.padding(12.dp),
-                style = if (isJsonMessage) {
-                    MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = FontFamily.Monospace
-                    )
-                } else {
-                    MaterialTheme.typography.bodyMedium
+            if (message.text is InputText.Assistant) {
+                message.text.header?.let {
+                    Text(text = it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyLarge)
                 }
-            )
+            }
+
+            if (message.text is InputText.Assistant) {
+                message.text.content?.let {
+                    Text(text = it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+
+            if (message.text is InputText.User) {
+                Text(
+                    text = message.text.text,
+                    modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
         }
     }
 }

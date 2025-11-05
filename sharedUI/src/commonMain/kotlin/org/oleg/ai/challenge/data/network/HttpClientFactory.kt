@@ -13,7 +13,6 @@ import io.ktor.client.request.header
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.json
-import kotlinx.serialization.json.Json
 import org.oleg.ai.challenge.BuildConfig
 
 /**
@@ -38,12 +37,7 @@ object HttpClientFactory {
         return HttpClient(getPlatformEngine()) {
             // JSON Content Negotiation
             install(ContentNegotiation) {
-                json(Json {
-                    ignoreUnknownKeys = true
-                    isLenient = true
-                    prettyPrint = false
-                    encodeDefaults = true
-                })
+                json(json)
             }
 
             // Logging Plugin
