@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.oleg.ai.challenge.component.main.MainComponent
 import org.oleg.ai.challenge.component.main.PreviewMainComponent
@@ -45,6 +46,13 @@ fun MainScreen(
             Text("Start Chat")
         }
     }
+
+    // Prompt Setup Dialog
+    PromptSetupDialog(
+        visible = component.isPromptDialogVisible.subscribeAsState().value,
+        onDismiss = component::onDismissPromptDialog,
+        onStartChat = component::onSavePromptsAndNavigate
+    )
 }
 
 @Preview

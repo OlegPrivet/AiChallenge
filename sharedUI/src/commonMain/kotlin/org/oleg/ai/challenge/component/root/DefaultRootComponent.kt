@@ -14,8 +14,8 @@ import org.oleg.ai.challenge.component.main.MainComponent
 
 class DefaultRootComponent(
     componentContext: ComponentContext,
-    private val mainComponentFactory: (ComponentContext, onNavigateToChat: () -> Unit) -> MainComponent,
-    private val chatComponentFactory: (ComponentContext, onNavigateBack: () -> Unit) -> ChatComponent
+    private val mainComponentFactory: (ComponentContext, onNavigateToChatWithPrompts: (String, String) -> Unit) -> MainComponent,
+    private val chatComponentFactory: (ComponentContext, onNavigateBack: () -> Unit, systemPrompt: String, assistantPrompt: String) -> ChatComponent
 ) : RootComponent, ComponentContext by componentContext {
 
     private val navigation = StackNavigation<Config>()
@@ -33,10 +33,12 @@ class DefaultRootComponent(
     private fun createChild(config: Config, context: ComponentContext): RootComponent.Child =
         when (config) {
             is Config.Main -> RootComponent.Child.MainChild(
-                mainComponentFactory(context) { navigation.push(Config.Chat) }
+                mainComponentFactory(context) { systemPrompt, assistantPrompt ->
+                    navigation.push(Config.Chat(systemPrompt, assistantPrompt))
+                }
             )
             is Config.Chat -> RootComponent.Child.ChatChild(
-                chatComponentFactory(context) { navigation.pop() }
+                chatComponentFactory(context, { navigation.pop() }, config.systemPrompt, config.assistantPrompt)
             )
         }
 
@@ -46,6 +48,9 @@ class DefaultRootComponent(
         data object Main : Config()
 
         @Serializable
-        data object Chat : Config()
+        data class Chat(
+            val systemPrompt: String = "",
+            val assistantPrompt: String = ""
+        ) : Config()
     }
 }

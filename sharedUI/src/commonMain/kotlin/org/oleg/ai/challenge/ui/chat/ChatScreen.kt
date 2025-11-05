@@ -9,12 +9,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,9 +30,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.jetbrains.compose.ui.tooling.preview.Preview
@@ -37,12 +43,13 @@ import org.oleg.ai.challenge.component.chat.ChatComponent
 import org.oleg.ai.challenge.component.chat.ChatMessage
 import org.oleg.ai.challenge.component.chat.PreviewChatComponent
 import org.oleg.ai.challenge.theme.AppTheme
+import org.oleg.ai.challenge.util.JsonFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
     component: ChatComponent,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val messages by component.messages.subscribeAsState()
     val inputText by component.inputText.subscribeAsState()
@@ -58,6 +65,30 @@ fun ChatScreen(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
                         )
+                    }
+                },
+                actions = {
+                    val systemPrompt by component.systemPrompt.subscribeAsState()
+                    val assistantPrompt by component.assistantPrompt.subscribeAsState()
+                    val hasActivePrompts by remember(systemPrompt, assistantPrompt) {
+                        derivedStateOf {
+                            systemPrompt.isNotEmpty() || assistantPrompt.isNotEmpty()
+                        }
+                    }
+
+                    IconButton(onClick = { component.onShowPromptDialog() }) {
+                        BadgedBox(
+                            badge = {
+                                if (hasActivePrompts) {
+                                    Badge()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Settings"
+                            )
+                        }
                     }
                 }
             )
@@ -78,7 +109,10 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Bottom)
             ) {
 
-                items(messages.reversed(), key = { it.id }) { message ->
+                items(
+                    messages.filter { it.isVisibleInUI }.reversed(),
+                    key = { it.id }
+                ) { message ->
                     ChatMessageItem(message)
                 }
                 // Show loading indicator at the top of the list (bottom visually due to reverseLayout)
@@ -118,19 +152,28 @@ fun ChatScreen(
             }
         }
     }
+
+    PromptDialog(
+        visible = component.isPromptDialogVisible.subscribeAsState().value,
+        systemPrompt = component.systemPrompt.subscribeAsState().value,
+        assistantPrompt = component.assistantPrompt.subscribeAsState().value,
+        onDismiss = component::onDismissPromptDialog,
+        onSave = component::onSavePrompts,
+        onClear = component::onClearPrompts
+    )
 }
 
 @Composable
 private fun LoadingIndicator() {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .wrapContentSize(),
         horizontalArrangement = Arrangement.Start
     ) {
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.secondaryContainer
-            ),
-            modifier = Modifier.widthIn(max = 280.dp)
+            )
         ) {
             Box(
                 modifier = Modifier.padding(12.dp),
@@ -156,24 +199,38 @@ private fun LoadingIndicator() {
 
 @Composable
 private fun ChatMessageItem(message: ChatMessage) {
+    val isJsonMessage = remember(message.text) {
+        JsonFormatter.isJson(message.text)
+    }
+
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth().padding(
+                start = if (message.isFromUser) 100.dp else 0.dp,
+                end = if (message.isFromUser) 0.dp else 100.dp,
+            ),
         horizontalArrangement = if (message.isFromUser)
             Arrangement.End else Arrangement.Start
     ) {
         Card(
+            modifier = Modifier.wrapContentSize(),
             colors = CardDefaults.cardColors(
                 containerColor = if (message.isFromUser)
                     MaterialTheme.colorScheme.primaryContainer
                 else
                     MaterialTheme.colorScheme.secondaryContainer
-            ),
-            modifier = Modifier.widthIn(max = 280.dp)
+            )
         ) {
             Text(
                 text = message.text,
                 modifier = Modifier.padding(12.dp),
-                style = MaterialTheme.typography.bodyMedium
+                style = if (isJsonMessage) {
+                    MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = FontFamily.Monospace
+                    )
+                } else {
+                    MaterialTheme.typography.bodyMedium
+                }
             )
         }
     }

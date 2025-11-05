@@ -9,14 +9,33 @@ interface ChatComponent {
     val inputText: Value<String>
     val isLoading: Value<Boolean>
 
+    // Dialog state properties
+    val isPromptDialogVisible: Value<Boolean>
+    val systemPrompt: Value<String>
+    val assistantPrompt: Value<String>
+
     fun onTextChanged(text: String)
     fun onSendMessage()
     fun onNavigateBack()
+
+    // Dialog control methods
+    fun onShowPromptDialog()
+    fun onDismissPromptDialog()
+    fun onSavePrompts(systemPrompt: String, assistantPrompt: String)
+    fun onClearPrompts()
 }
 
 data class ChatMessage @OptIn(ExperimentalTime::class) constructor(
     val id: String,
     val text: String,
     val isFromUser: Boolean,
-    val timestamp: Long = Clock.System.now().toEpochMilliseconds()
+    val timestamp: Long = Clock.System.now().toEpochMilliseconds(),
+    val role: MessageRole? = null,
+    val isVisibleInUI: Boolean = true
 )
+
+enum class MessageRole {
+    SYSTEM,
+    USER,
+    ASSISTANT
+}
