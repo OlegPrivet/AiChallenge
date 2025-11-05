@@ -9,15 +9,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.oleg.ai.challenge.data.network.ApiResult
-import org.oleg.ai.challenge.data.network.createSimpleUserRequest
+import org.oleg.ai.challenge.data.network.createConversationRequest
 import org.oleg.ai.challenge.data.network.service.ChatApiService
+import org.oleg.ai.challenge.util.JsonFormatter
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 class DefaultChatComponent(
     componentContext: ComponentContext,
     private val chatApiService: ChatApiService,
-    private val onNavigateBack: () -> Unit
+    private val onNavigateBack: () -> Unit,
+    initialSystemPrompt: String = "",
+    initialAssistantPrompt: String = ""
 ) : ChatComponent, ComponentContext by componentContext {
 
     private val logger = Logger.withTag("DefaultChatComponent")
@@ -32,6 +35,46 @@ class DefaultChatComponent(
     private val _isLoading = MutableValue(false)
     override val isLoading: Value<Boolean> = _isLoading
 
+    private val _isPromptDialogVisible = MutableValue(false)
+    override val isPromptDialogVisible: Value<Boolean> = _isPromptDialogVisible
+
+    private val _systemPrompt = MutableValue(initialSystemPrompt)
+    override val systemPrompt: Value<String> = _systemPrompt
+
+    private val _assistantPrompt = MutableValue(initialAssistantPrompt)
+    override val assistantPrompt: Value<String> = _assistantPrompt
+
+    init {
+        // Add initial system and assistant prompts as hidden messages
+        val initialMessages = mutableListOf<ChatMessage>()
+
+        if (initialSystemPrompt.isNotEmpty()) {
+            initialMessages.add(
+                ChatMessage(
+                    id = generateId(),
+                    text = initialSystemPrompt,
+                    isFromUser = false,
+                    role = MessageRole.SYSTEM,
+                    isVisibleInUI = false
+                )
+            )
+        }
+
+        if (initialAssistantPrompt.isNotEmpty()) {
+            initialMessages.add(
+                ChatMessage(
+                    id = generateId(),
+                    text = initialAssistantPrompt,
+                    isFromUser = false,
+                    role = MessageRole.ASSISTANT,
+                    isVisibleInUI = false
+                )
+            )
+        }
+
+        _messages.value = initialMessages
+    }
+
     override fun onTextChanged(text: String) {
         _inputText.value = text
     }
@@ -44,7 +87,9 @@ class DefaultChatComponent(
         val userMessage = ChatMessage(
             id = generateId(),
             text = text,
-            isFromUser = true
+            isFromUser = true,
+            role = MessageRole.USER,
+            isVisibleInUI = true
         )
 
         _messages.value = _messages.value + userMessage
@@ -56,7 +101,26 @@ class DefaultChatComponent(
         // Send API request
         scope.launch {
             try {
-                val request = createSimpleUserRequest(text)
+                // Convert UI messages to API messages
+                val apiMessages = _messages.value.map { uiMessage ->
+                    val apiRole = when (uiMessage.role) {
+                        MessageRole.SYSTEM -> org.oleg.ai.challenge.data.network.model.MessageRole.SYSTEM
+                        MessageRole.ASSISTANT -> org.oleg.ai.challenge.data.network.model.MessageRole.ASSISTANT
+                        MessageRole.USER -> org.oleg.ai.challenge.data.network.model.MessageRole.USER
+                        null -> if (uiMessage.isFromUser) {
+                            org.oleg.ai.challenge.data.network.model.MessageRole.USER
+                        } else {
+                            org.oleg.ai.challenge.data.network.model.MessageRole.ASSISTANT
+                        }
+                    }
+                    org.oleg.ai.challenge.data.network.model.ChatMessage(
+                        role = apiRole,
+                        content = uiMessage.text
+                    )
+                }
+
+                // Create request with full conversation history
+                val request = createConversationRequest(apiMessages)
                 val result = chatApiService.sendChatCompletion(request)
 
                 when (result) {
@@ -68,10 +132,14 @@ class DefaultChatComponent(
                         } else {
                             result.data.choices.forEach { choice ->
                                 logger.d { "Received AI response: ${choice.message.content}" }
+                                // Format JSON if the response is JSON, otherwise keep as-is
+                                val formattedText = JsonFormatter.formatIfJson(choice.message.content)
                                 val aiMessage = ChatMessage(
                                     id = generateId(),
-                                    text = choice.message.content,
-                                    isFromUser = false
+                                    text = formattedText,
+                                    isFromUser = false,
+                                    role = MessageRole.ASSISTANT,
+                                    isVisibleInUI = true
                                 )
                                 _messages.value = _messages.value + aiMessage
                             }
@@ -94,6 +162,37 @@ class DefaultChatComponent(
 
     override fun onNavigateBack() {
         onNavigateBack.invoke()
+    }
+
+    override fun onShowPromptDialog() {
+        _isPromptDialogVisible.value = true
+    }
+
+    override fun onDismissPromptDialog() {
+        _isPromptDialogVisible.value = false
+    }
+
+    override fun onSavePrompts(systemPrompt: String, assistantPrompt: String) {
+        // If system prompt has changed, insert a new SYSTEM message into the conversation
+        if (systemPrompt != _systemPrompt.value && systemPrompt.isNotEmpty()) {
+            val newSystemMessage = ChatMessage(
+                id = generateId(),
+                text = systemPrompt,
+                isFromUser = false,
+                role = MessageRole.SYSTEM,
+                isVisibleInUI = false
+            )
+            _messages.value = _messages.value + newSystemMessage
+        }
+
+        _systemPrompt.value = systemPrompt
+        _assistantPrompt.value = assistantPrompt
+        _isPromptDialogVisible.value = false
+    }
+
+    override fun onClearPrompts() {
+        _systemPrompt.value = ""
+        _assistantPrompt.value = ""
     }
 
     /**

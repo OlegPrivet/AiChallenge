@@ -54,6 +54,33 @@ fun createRequestWithSystemPrompt(
 }
 
 /**
+ * Creates a ChatRequest with optional system and assistant prompts, and a user message.
+ *
+ * @param systemPrompt The optional system prompt to guide the AI's behavior
+ * @param assistantPrompt The optional assistant prompt to guide the AI's behavior
+ * @param userMessage The user's message content
+ * @param model The AI model to use (default: BuildConfig.DEFAULT_MODEL)
+ * @return A ChatRequest ready to be sent to the API
+ */
+fun createRequestWithSystemAndAssistantPrompts(
+    systemPrompt: String?,
+    assistantPrompt: String?,
+    userMessage: String,
+    model: String = BuildConfig.DEFAULT_MODEL
+): ChatRequest {
+    val messages = buildList {
+        systemPrompt?.let { add(ChatMessage(role = MessageRole.SYSTEM, content = it)) }
+        assistantPrompt?.let { add(ChatMessage(role = MessageRole.ASSISTANT, content = it)) }
+        add(ChatMessage(role = MessageRole.USER, content = userMessage))
+    }
+
+    return ChatRequest(
+        model = model,
+        messages = messages
+    )
+}
+
+/**
  * Creates a ChatRequest with a conversation history.
  * Useful for maintaining context across multiple turns.
  *

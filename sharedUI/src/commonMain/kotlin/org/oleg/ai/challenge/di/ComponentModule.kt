@@ -11,14 +11,16 @@ val componentModule = module {
     factory<RootComponent> { (componentContext: ComponentContext) ->
         DefaultRootComponent(
             componentContext = componentContext,
-            mainComponentFactory = { context, onNavigateToChat ->
-                DefaultMainComponent(context, onNavigateToChat)
+            mainComponentFactory = { context, onNavigateToChatWithPrompts ->
+                DefaultMainComponent(context, onNavigateToChatWithPrompts)
             },
-            chatComponentFactory = { context, onNavigateBack ->
+            chatComponentFactory = { context, onNavigateBack, systemPrompt, assistantPrompt ->
                 DefaultChatComponent(
                     componentContext = context,
                     chatApiService = get(),
-                    onNavigateBack = onNavigateBack
+                    onNavigateBack = onNavigateBack,
+                    initialSystemPrompt = systemPrompt,
+                    initialAssistantPrompt = assistantPrompt
                 )
             }
         )
