@@ -11,13 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Badge
-import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,9 +30,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -54,6 +53,9 @@ fun ChatScreen(
     val inputText by component.inputText.subscribeAsState()
     val isLoading by component.isLoading.subscribeAsState()
 
+    val lazyListState: LazyListState = rememberLazyListState()
+
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -66,30 +68,6 @@ fun ChatScreen(
                         )
                     }
                 },
-                actions = {
-                    val systemPrompt by component.systemPrompt.subscribeAsState()
-                    val assistantPrompt by component.assistantPrompt.subscribeAsState()
-                    val hasActivePrompts by remember(systemPrompt, assistantPrompt) {
-                        derivedStateOf {
-                            systemPrompt.isNotEmpty() || assistantPrompt.isNotEmpty()
-                        }
-                    }
-
-                    IconButton(onClick = { component.onShowPromptDialog() }) {
-                        BadgedBox(
-                            badge = {
-                                if (hasActivePrompts) {
-                                    Badge()
-                                }
-                            }
-                        ) {
-                            Icon(
-                                Icons.Default.Settings,
-                                contentDescription = "Settings"
-                            )
-                        }
-                    }
-                }
             )
         }
     ) { paddingValues ->
@@ -103,22 +81,16 @@ fun ChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
+                state = lazyListState,
                 reverseLayout = true,
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.Bottom)
             ) {
-
                 items(
                     messages.filter { it.isVisibleInUI }.reversed(),
                     key = { it.id }
                 ) { message ->
                     ChatMessageItem(message)
-                }
-                // Show loading indicator at the top of the list (bottom visually due to reverseLayout)
-                if (isLoading) {
-                    item(key = "loading_indicator") {
-                        LoadingIndicator()
-                    }
                 }
             }
 
@@ -139,27 +111,29 @@ fun ChatScreen(
                     enabled = !isLoading
                 )
 
-                IconButton(
-                    onClick = { component.onSendMessage() },
-                    enabled = inputText.isNotBlank() && !isLoading
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send"
-                    )
+                Box {
+                    IconButton(
+                        onClick = { component.onSendMessage() },
+                        enabled = inputText.isNotBlank() && !isLoading
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send"
+                        )
+                    }
+                    if (isLoading) {
+                        LoadingIndicator()
+                    }
                 }
             }
         }
-    }
 
-    PromptDialog(
-        visible = component.isPromptDialogVisible.subscribeAsState().value,
-        systemPrompt = component.systemPrompt.subscribeAsState().value,
-        assistantPrompt = component.assistantPrompt.subscribeAsState().value,
-        onDismiss = component::onDismissPromptDialog,
-        onSave = component::onSavePrompts,
-        onClear = component::onClearPrompts
-    )
+        LaunchedEffect(messages.size) {
+            if (messages.isNotEmpty()) {
+                lazyListState.animateScrollToItem(0)
+            }
+        }
+    }
 }
 
 @Composable
@@ -220,22 +194,27 @@ private fun ChatMessageItem(message: ChatMessage) {
         ) {
             if (message.text is InputText.Assistant) {
                 message.text.header?.let {
-                    Text(text = it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyLarge)
+                    SelectionContainer {
+                        Text(text = it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyLarge)
+                    }
                 }
             }
 
             if (message.text is InputText.Assistant) {
                 message.text.content?.let {
-                    Text(text = it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                    SelectionContainer {
+                        Text(text = it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
-
             if (message.text is InputText.User) {
-                Text(
-                    text = message.text.text,
-                    modifier = Modifier.padding(12.dp),
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                SelectionContainer {
+                    Text(
+                        text = message.text.text,
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         }
     }

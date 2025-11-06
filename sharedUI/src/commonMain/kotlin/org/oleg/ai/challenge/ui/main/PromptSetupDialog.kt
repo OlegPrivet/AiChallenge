@@ -34,7 +34,7 @@ fun PromptSetupDialog(
     var assistantPrompt by remember { mutableStateOf("""
         {
             "header": "Заголовок ответа",
-            "content":"Строка с ответом"
+            "content":"Ответ должен быть только в виде строки, которая может содержать разные абзаца"
         }
     """.trimIndent()) }
 
@@ -106,7 +106,6 @@ fun PromptSetupDialog(
                             .height(120.dp),
                         maxLines = 5,
                         textStyle = MaterialTheme.typography.bodyMedium,
-                        enabled = false
                     )
                 }
             }

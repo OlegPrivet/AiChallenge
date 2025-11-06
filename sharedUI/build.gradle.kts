@@ -100,7 +100,7 @@ buildConfig {
 
     buildConfigField("String", "OPENROUTER_API_KEY", "\"$apiKey\"")
     buildConfigField("String", "OPENROUTER_BASE_URL", "\"https://openrouter.ai/api/v1/\"")
-    buildConfigField("String", "DEFAULT_MODEL", "\"openai/gpt-oss-20b:free\"")
+    buildConfigField("String", "DEFAULT_MODEL", "\"openai/gpt-4.1\"")
 }
 
 room {

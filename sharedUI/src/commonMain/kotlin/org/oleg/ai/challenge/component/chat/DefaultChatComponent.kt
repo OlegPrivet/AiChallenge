@@ -135,8 +135,6 @@ class DefaultChatComponent(
                             addErrorMessage("No response received from AI")
                         } else {
                             result.data.choices.forEach { choice ->
-                                logger.d { "Received AI response: ${choice.message.content}" }
-                                // Format JSON if the response is JSON, otherwise keep as-is
                                 val formattedText = json.decodeFromString<InputText.Assistant>(choice.message.content)
                                 val aiMessage = ChatMessage(
                                     id = generateId(),
