@@ -6,6 +6,7 @@ import com.arkivanov.decompose.extensions.compose.stack.Children
 import com.arkivanov.decompose.extensions.compose.stack.animation.slide
 import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import org.oleg.ai.challenge.component.root.RootComponent
+import org.oleg.ai.challenge.ui.agentcreation.AgentCreationScreen
 import org.oleg.ai.challenge.ui.chat.ChatScreen
 import org.oleg.ai.challenge.ui.main.MainScreen
 
@@ -21,6 +22,7 @@ fun RootContent(
     ) { child ->
         when (val instance = child.instance) {
             is RootComponent.Child.MainChild -> MainScreen(instance.component)
+            is RootComponent.Child.AgentCreationChild -> AgentCreationScreen(instance.component)
             is RootComponent.Child.ChatChild -> ChatScreen(instance.component)
         }
     }

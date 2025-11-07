@@ -6,16 +6,19 @@ import com.arkivanov.decompose.router.stack.ChildStack
 import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.decompose.router.stack.childStack
 import com.arkivanov.decompose.router.stack.pop
+import com.arkivanov.decompose.router.stack.popToFirst
 import com.arkivanov.decompose.router.stack.push
 import com.arkivanov.decompose.value.Value
 import kotlinx.serialization.Serializable
+import org.oleg.ai.challenge.component.agentcreation.AgentCreationComponent
 import org.oleg.ai.challenge.component.chat.ChatComponent
 import org.oleg.ai.challenge.component.main.MainComponent
 
 class DefaultRootComponent(
     componentContext: ComponentContext,
-    private val mainComponentFactory: (ComponentContext, onNavigateToChatWithPrompts: (String, String) -> Unit) -> MainComponent,
-    private val chatComponentFactory: (ComponentContext, onNavigateBack: () -> Unit, systemPrompt: String, assistantPrompt: String) -> ChatComponent
+    private val mainComponentFactory: (ComponentContext, onNavigateToAgentCreation: () -> Unit) -> MainComponent,
+    private val agentCreationComponentFactory: (ComponentContext, onNavigateBack: () -> Unit, onNavigateToChat: () -> Unit) -> AgentCreationComponent,
+    private val chatComponentFactory: (ComponentContext, onNavigateBack: () -> Unit) -> ChatComponent
 ) : RootComponent, ComponentContext by componentContext {
 
     private val navigation = StackNavigation<Config>()
@@ -33,12 +36,19 @@ class DefaultRootComponent(
     private fun createChild(config: Config, context: ComponentContext): RootComponent.Child =
         when (config) {
             is Config.Main -> RootComponent.Child.MainChild(
-                mainComponentFactory(context) { systemPrompt, assistantPrompt ->
-                    navigation.push(Config.Chat(systemPrompt, assistantPrompt))
+                mainComponentFactory(context) {
+                    navigation.push(Config.AgentCreation)
                 }
             )
+            is Config.AgentCreation -> RootComponent.Child.AgentCreationChild(
+                agentCreationComponentFactory(
+                    context,
+                    { navigation.pop() },
+                    { navigation.push(Config.Chat) }
+                )
+            )
             is Config.Chat -> RootComponent.Child.ChatChild(
-                chatComponentFactory(context, { navigation.pop() }, config.systemPrompt, config.assistantPrompt)
+                chatComponentFactory(context) { navigation.popToFirst() }
             )
         }
 
@@ -48,9 +58,9 @@ class DefaultRootComponent(
         data object Main : Config()
 
         @Serializable
-        data class Chat(
-            val systemPrompt: String = "",
-            val assistantPrompt: String = ""
-        ) : Config()
+        data object AgentCreation : Config()
+
+        @Serializable
+        data object Chat : Config()
     }
 }

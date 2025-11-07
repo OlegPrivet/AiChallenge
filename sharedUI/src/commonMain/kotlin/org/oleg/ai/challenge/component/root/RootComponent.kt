@@ -2,6 +2,7 @@ package org.oleg.ai.challenge.component.root
 
 import com.arkivanov.decompose.router.stack.ChildStack
 import com.arkivanov.decompose.value.Value
+import org.oleg.ai.challenge.component.agentcreation.AgentCreationComponent
 import org.oleg.ai.challenge.component.chat.ChatComponent
 import org.oleg.ai.challenge.component.main.MainComponent
 
@@ -10,6 +11,7 @@ interface RootComponent {
 
     sealed class Child {
         data class MainChild(val component: MainComponent) : Child()
+        data class AgentCreationChild(val component: AgentCreationComponent) : Child()
         data class ChatChild(val component: ChatComponent) : Child()
     }
 }

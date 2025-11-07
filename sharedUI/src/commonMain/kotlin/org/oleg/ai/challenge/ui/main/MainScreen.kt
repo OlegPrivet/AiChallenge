@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.oleg.ai.challenge.component.main.MainComponent
 import org.oleg.ai.challenge.component.main.PreviewMainComponent
@@ -40,19 +39,12 @@ fun MainScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Button(
-            onClick = { component.onNavigateToChat() },
+            onClick = { component.onNavigateToAgentCreation() },
             modifier = Modifier.widthIn(min = 200.dp)
         ) {
-            Text("Start Chat")
+            Text("Create Agent")
         }
     }
-
-    // Prompt Setup Dialog
-    PromptSetupDialog(
-        visible = component.isPromptDialogVisible.subscribeAsState().value,
-        onDismiss = component::onDismissPromptDialog,
-        onStartChat = component::onSavePromptsAndNavigate
-    )
 }
 
 @Preview

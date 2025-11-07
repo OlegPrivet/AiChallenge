@@ -8,9 +8,10 @@ import com.arkivanov.essenty.lifecycle.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.oleg.ai.challenge.data.AgentManager
+import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
-import org.oleg.ai.challenge.data.network.json
 import org.oleg.ai.challenge.data.network.service.ChatApiService
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -18,13 +19,15 @@ import kotlin.time.ExperimentalTime
 class DefaultChatComponent(
     componentContext: ComponentContext,
     private val chatApiService: ChatApiService,
-    private val onNavigateBack: () -> Unit,
-    initialSystemPrompt: String = "",
-    initialAssistantPrompt: String = "",
+    private val agentManager: AgentManager,
+    private val onNavigateBack: () -> Unit
 ) : ChatComponent, ComponentContext by componentContext {
 
     private val logger = Logger.withTag("DefaultChatComponent")
     private val scope = coroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+
+    // Store messages per agent
+    private val messagesByAgent = mutableMapOf<String, MutableList<ChatMessage>>()
 
     private val _messages = MutableValue<List<ChatMessage>>(emptyList())
     override val messages: Value<List<ChatMessage>> = _messages
@@ -35,74 +38,140 @@ class DefaultChatComponent(
     private val _isLoading = MutableValue(false)
     override val isLoading: Value<Boolean> = _isLoading
 
-    private val _isPromptDialogVisible = MutableValue(false)
-    override val isPromptDialogVisible: Value<Boolean> = _isPromptDialogVisible
+    private val _availableAgents = MutableValue<List<Agent>>(emptyList())
+    override val availableAgents: Value<List<Agent>> = _availableAgents
 
-    private val _systemPrompt = MutableValue(initialSystemPrompt)
-    override val systemPrompt: Value<String> = _systemPrompt
+    private val _selectedAgent = MutableValue(agentManager.getMainAgent()!!)
+    override val selectedAgent: Value<Agent> = _selectedAgent
 
-    private val _assistantPrompt = MutableValue(initialAssistantPrompt)
-    override val assistantPrompt: Value<String> = _assistantPrompt
+    private val _currentAgentModel = MutableValue("")
+    override val currentAgentModel: Value<String> = _currentAgentModel
 
     init {
-        // Add initial system and assistant prompts as hidden messages
-        val initialMessages = mutableListOf<ChatMessage>()
+        // Setup available agents
+        val allAgents = agentManager.getAllAgents()
+        _availableAgents.value = allAgents
 
-        if (initialSystemPrompt.isNotEmpty()) {
-            initialMessages.add(
-                ChatMessage(
-                    id = generateId(),
-                    text = InputText.System(initialSystemPrompt),
-                    isFromUser = false,
-                    role = MessageRole.SYSTEM,
-                    isVisibleInUI = false
+        // Initialize message storage for each agent
+        allAgents.forEach { agent ->
+            val agentMessages = mutableListOf<ChatMessage>()
+
+            // Add system prompt if exists
+            agent.systemPrompt?.let { prompt ->
+                agentMessages.add(
+                    ChatMessage(
+                        id = generateId(),
+                        text = prompt,
+                        isFromUser = false,
+                        role = MessageRole.SYSTEM,
+                        isVisibleInUI = false,
+                        agentId = agent.id
+                    )
                 )
-            )
+            }
+
+            // Add assistant prompt if exists
+            agent.assistantPrompt?.let { prompt ->
+                agentMessages.add(
+                    ChatMessage(
+                        id = generateId(),
+                        text = prompt,
+                        isFromUser = false,
+                        role = MessageRole.ASSISTANT,
+                        isVisibleInUI = false,
+                        agentId = agent.id
+                    )
+                )
+            }
+
+            messagesByAgent[agent.id] = agentMessages
         }
 
-        if (initialAssistantPrompt.isNotEmpty()) {
-            initialMessages.add(
-                ChatMessage(
-                    id = generateId(),
-                    text = InputText.Assistant(prompt = initialAssistantPrompt),
-                    isFromUser = false,
-                    role = MessageRole.ASSISTANT,
-                    isVisibleInUI = false
-                )
-            )
-        }
-
-        _messages.value = initialMessages
+        // Show main agent's messages initially
+        updateDisplayedMessages()
+        updateCurrentAgentModel()
     }
 
     override fun onTextChanged(text: String) {
         _inputText.value = text
     }
 
+    override fun onAgentSelected(agentId: String?) {
+        agentId ?: return
+        val selectedAgent = agentManager.getAgent(agentId) ?: return
+        _selectedAgent.value = selectedAgent
+        updateDisplayedMessages()
+        updateCurrentAgentModel()
+    }
+
+    override fun onModelChanged(model: String) {
+        val currentAgent = getCurrentAgent()
+
+        // Update the agent's model
+        val updatedAgent = currentAgent.copy(model = model)
+
+        // Update in AgentManager
+        if (currentAgent.id == "main") {
+            agentManager.setMainAgent(updatedAgent)
+        } else {
+            agentManager.updateSubAgent(updatedAgent)
+        }
+
+        _currentAgentModel.value = model
+    }
+
+    // Convenience method for getting current agent ID
+    private fun getCurrentAgent(): Agent = _selectedAgent.value
+
+    // Update the displayed model for the current agent
+    private fun updateCurrentAgentModel() {
+        val currentAgent = getCurrentAgent()
+        _currentAgentModel.value = currentAgent.model
+    }
+
     override fun onSendMessage() {
-        val text = _inputText.value.trim()
+        val text = _inputText.value
         if (text.isEmpty() || _isLoading.value) return
 
-        // Add user message to chat
+        val currentAgent = getCurrentAgent()
+        val currentAgentId = currentAgent.id
+
+        // Add user message to the current agent's history
         val userMessage = ChatMessage(
             id = generateId(),
-            text = InputText.User(text),
+            text = text,
             isFromUser = true,
             role = MessageRole.USER,
-            isVisibleInUI = true
+            isVisibleInUI = true,
+            agentName = currentAgent.name,
+            agentId = currentAgentId
         )
 
-        _messages.value = _messages.value + userMessage
+        messagesByAgent[currentAgentId]?.add(userMessage)
+        updateDisplayedMessages()
         _inputText.value = ""
         _isLoading.value = true
 
-        logger.d { "Sending user message: $text" }
+        logger.d { "Sending user message to agent $currentAgentId: $text" }
 
         // Send API request
         scope.launch {
             try {
+                // Get messages to send based on whether this is the main agent
+                val messagesToSend = if (currentAgentId == "main") {
+                    // Main agent gets ALL messages from all agents, sorted by timestamp
+                    getAllMessagesMerged()
+                } else {
+                    // Sub-agent gets only messages related to this specific agent:
+                    // - Its system/assistant prompts (isVisibleInUI = false)
+                    // - Only user messages and AI responses for THIS agent (agentId matches)
+                    getAllMessagesMerged().filter { message ->
+                        message.agentId == currentAgentId
+                    }
+                }
+
                 // Convert UI messages to API messages
-                val apiMessages = _messages.value.map { uiMessage ->
+                val apiMessages = messagesToSend.map { uiMessage ->
                     val apiRole = when (uiMessage.role) {
                         MessageRole.SYSTEM -> org.oleg.ai.challenge.data.network.model.MessageRole.SYSTEM
                         MessageRole.ASSISTANT -> org.oleg.ai.challenge.data.network.model.MessageRole.ASSISTANT
@@ -115,47 +184,45 @@ class DefaultChatComponent(
                     }
                     org.oleg.ai.challenge.data.network.model.ChatMessage(
                         role = apiRole,
-                        content = when (val text = uiMessage.text) {
-                            is InputText.Assistant -> text.prompt ?: text.content!!
-                            is InputText.System -> text.text
-                            is InputText.User -> text.text
-                        }
+                        content = uiMessage.text
                     )
                 }
 
-                // Create request with full conversation history
-                val request = createConversationRequest(apiMessages)
+                // Create request with the agent's model
+                val request = createConversationRequest(apiMessages, currentAgent.model)
                 val result = chatApiService.sendChatCompletion(request)
 
                 when (result) {
                     is ApiResult.Success -> {
-                        // Extract AI response from choices[0].message.content
                         if (result.data.choices.isEmpty()) {
                             logger.w { "AI response content is null" }
-                            addErrorMessage("No response received from AI")
+                            addErrorMessage(currentAgentId, "No response received from AI")
                         } else {
                             result.data.choices.forEach { choice ->
-                                val formattedText = json.decodeFromString<InputText.Assistant>(choice.message.content)
                                 val aiMessage = ChatMessage(
                                     id = generateId(),
-                                    text = formattedText,
+                                    text = choice.message.content,
                                     isFromUser = false,
                                     role = MessageRole.ASSISTANT,
-                                    isVisibleInUI = true
+                                    isVisibleInUI = true,
+                                    agentName = currentAgent.name,
+                                    agentId = currentAgentId,
+                                    modelUsed = result.data.model
                                 )
-                                _messages.value = _messages.value + aiMessage
+                                messagesByAgent[currentAgentId]?.add(aiMessage)
                             }
+                            updateDisplayedMessages()
                         }
                     }
 
                     is ApiResult.Error -> {
                         logger.e { "API error: ${result.error.getDescription()}" }
-                        addErrorMessage("Error: ${result.error.getDescription()}")
+                        addErrorMessage(currentAgentId, "Error: ${result.error.getDescription()}")
                     }
                 }
             } catch (e: Exception) {
                 logger.e(e) { "Unexpected error during API call" }
-                addErrorMessage("Unexpected error: ${e.message ?: "Unknown error"}")
+                addErrorMessage(currentAgentId, "Unexpected error: ${e.message ?: "Unknown error"}")
             } finally {
                 _isLoading.value = false
             }
@@ -163,50 +230,41 @@ class DefaultChatComponent(
     }
 
     override fun onNavigateBack() {
+        agentManager.clear()
         onNavigateBack.invoke()
     }
 
-    override fun onShowPromptDialog() {
-        _isPromptDialogVisible.value = true
-    }
-
-    override fun onDismissPromptDialog() {
-        _isPromptDialogVisible.value = false
-    }
-
-    override fun onSavePrompts(systemPrompt: String, assistantPrompt: String) {
-        // If system prompt has changed, insert a new SYSTEM message into the conversation
-        if (systemPrompt != _systemPrompt.value && systemPrompt.isNotEmpty()) {
-            val newSystemMessage = ChatMessage(
-                id = generateId(),
-                text = InputText.System(systemPrompt),
-                isFromUser = false,
-                role = MessageRole.SYSTEM,
-                isVisibleInUI = false
-            )
-            _messages.value = _messages.value + newSystemMessage
-        }
-
-        _systemPrompt.value = systemPrompt
-        _assistantPrompt.value = assistantPrompt
-        _isPromptDialogVisible.value = false
-    }
-
-    override fun onClearPrompts() {
-        _systemPrompt.value = ""
-        _assistantPrompt.value = ""
+    /**
+     * Updates the displayed messages.
+     * ALWAYS shows all messages merged chronologically regardless of selected agent.
+     * Agent selection only affects which messages are sent in API requests.
+     */
+    private fun updateDisplayedMessages() {
+        // Always show all messages from all agents merged and sorted by timestamp
+        _messages.value = getAllMessagesMerged()
     }
 
     /**
-     * Adds an error message to the chat as a system message.
+     * Gets all messages from all agents merged and sorted chronologically by timestamp.
      */
-    private fun addErrorMessage(errorText: String) {
+    private fun getAllMessagesMerged(): List<ChatMessage> {
+        return messagesByAgent.values
+            .flatten()
+            .sortedBy { it.timestamp }
+    }
+
+    /**
+     * Adds an error message to the specified agent's chat history.
+     */
+    private fun addErrorMessage(agentId: String, errorText: String) {
         val errorMessage = ChatMessage(
             id = generateId(),
-            text = InputText.User(text = errorText),
-            isFromUser = false
+            text = errorText,
+            isFromUser = false,
+            agentId = agentId
         )
-        _messages.value = _messages.value + errorMessage
+        messagesByAgent[agentId]?.add(errorMessage)
+        updateDisplayedMessages()
     }
 
     @OptIn(ExperimentalTime::class)

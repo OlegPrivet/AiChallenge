@@ -53,6 +53,7 @@ kotlin {
             implementation(libs.kotlinx.datetime)
             implementation(libs.room.runtime)
             implementation(libs.icons)
+            implementation(libs.multiplatform.markdown.renderer.m3)
         }
 
         commonTest.dependencies {

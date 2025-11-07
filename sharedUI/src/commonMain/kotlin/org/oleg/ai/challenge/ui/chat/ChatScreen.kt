@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,14 +35,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.arkivanov.decompose.extensions.compose.subscribeAsState
+import com.mikepenz.markdown.m3.Markdown
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.oleg.ai.challenge.component.chat.ChatComponent
 import org.oleg.ai.challenge.component.chat.ChatMessage
-import org.oleg.ai.challenge.component.chat.InputText
 import org.oleg.ai.challenge.component.chat.PreviewChatComponent
+import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.theme.AppTheme
+import org.oleg.ai.challenge.ui.agentcreation.ModelSelector
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,6 +56,9 @@ fun ChatScreen(
     val messages by component.messages.subscribeAsState()
     val inputText by component.inputText.subscribeAsState()
     val isLoading by component.isLoading.subscribeAsState()
+    val availableAgents by component.availableAgents.subscribeAsState()
+    val selectedAgent by component.selectedAgent.subscribeAsState()
+    val currentAgentModel by component.currentAgentModel.subscribeAsState()
 
     val lazyListState: LazyListState = rememberLazyListState()
 
@@ -76,6 +83,28 @@ fun ChatScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // Agent Selector
+            if (availableAgents.size > 1) {
+                AgentSelector(
+                    availableAgents = availableAgents,
+                    selectedAgent = selectedAgent,
+                    onAgentSelected = component::onAgentSelected,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Model Selector
+            if (currentAgentModel.isNotEmpty()) {
+                ModelSelector(
+                    selectedModel = currentAgentModel,
+                    onModelSelected = { component.onModelChanged(it) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    label = "Current AI Model"
+                )
+            }
+
             // Message list
             LazyColumn(
                 modifier = Modifier
@@ -104,7 +133,7 @@ fun ChatScreen(
             ) {
                 TextField(
                     value = inputText,
-                    onValueChange = { component.onTextChanged(it) },
+                    onValueChange = component::onTextChanged,
                     modifier = Modifier.weight(1f),
                     placeholder = { Text("Type a message...") },
                     maxLines = 3,
@@ -131,6 +160,45 @@ fun ChatScreen(
         LaunchedEffect(messages.size) {
             if (messages.isNotEmpty()) {
                 lazyListState.animateScrollToItem(0)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AgentSelector(
+    availableAgents: List<Agent>,
+    selectedAgent: Agent,
+    onAgentSelected: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Agent:",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            availableAgents.forEach { agent ->
+                val isSelected = selectedAgent == agent
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { onAgentSelected(agent.id) },
+                    label = {
+                        Text(
+                            text = if (agent.id == "main") "Main Agent" else agent.name,
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                )
             }
         }
     }
@@ -172,8 +240,6 @@ private fun LoadingIndicator() {
 
 @Composable
 private fun ChatMessageItem(message: ChatMessage) {
-    if (message.text is InputText.System) return
-
     Row(
         modifier = Modifier
             .fillMaxWidth().padding(
@@ -192,27 +258,38 @@ private fun ChatMessageItem(message: ChatMessage) {
                     MaterialTheme.colorScheme.secondaryContainer
             )
         ) {
-            if (message.text is InputText.Assistant) {
-                message.text.header?.let {
-                    SelectionContainer {
-                        Text(text = it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyLarge)
+            Column(modifier = Modifier.padding(12.dp)) {
+                // Show agent/model badge for AI messages
+                if (!message.isFromUser) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    ) {
+                        // Agent name badge (if sub-agent)
+                        message.agentName?.let { agentId ->
+                            if (agentId != "main") {
+                                Text(
+                                    text = "Agent: $agentId",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.Magenta
+                                )
+                            }
+                        }
+                        // Model badge
+                        message.modelUsed?.let { model ->
+                            Text(
+                                text = "Model: $model",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Magenta
+                            )
+                        }
                     }
                 }
-            }
-
-            if (message.text is InputText.Assistant) {
-                message.text.content?.let {
-                    SelectionContainer {
-                        Text(text = it, modifier = Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-            if (message.text is InputText.User) {
+                // Message content
                 SelectionContainer {
-                    Text(
-                        text = message.text.text,
-                        modifier = Modifier.padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium
+                    Markdown(
+                        content = message.text,
+                        modifier = Modifier.align(if (message.isFromUser) Alignment.End else Alignment.Start)
                     )
                 }
             }
