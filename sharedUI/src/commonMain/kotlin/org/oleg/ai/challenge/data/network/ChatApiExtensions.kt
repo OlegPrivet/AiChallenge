@@ -14,11 +14,13 @@ import org.oleg.ai.challenge.data.network.model.MessageRole
  *
  * @param userMessage The user's message content
  * @param model The AI model to use (default: BuildConfig.DEFAULT_MODEL)
+ * @param temperature Controls response variety (0.0 = deterministic, 2.0 = highly creative)
  * @return A ChatRequest ready to be sent to the API
  */
 fun createSimpleUserRequest(
     userMessage: String,
-    model: String = BuildConfig.DEFAULT_MODEL
+    model: String = BuildConfig.DEFAULT_MODEL,
+    temperature: Float? = null
 ): ChatRequest {
     return ChatRequest(
         model = model,
@@ -27,7 +29,8 @@ fun createSimpleUserRequest(
                 role = MessageRole.USER,
                 content = userMessage
             )
-        )
+        ),
+        temperature = temperature
     )
 }
 
@@ -37,19 +40,22 @@ fun createSimpleUserRequest(
  * @param systemPrompt The system prompt to guide the AI's behavior
  * @param userMessage The user's message content
  * @param model The AI model to use (default: BuildConfig.DEFAULT_MODEL)
+ * @param temperature Controls response variety (0.0 = deterministic, 2.0 = highly creative)
  * @return A ChatRequest ready to be sent to the API
  */
 fun createRequestWithSystemPrompt(
     systemPrompt: String,
     userMessage: String,
-    model: String = BuildConfig.DEFAULT_MODEL
+    model: String = BuildConfig.DEFAULT_MODEL,
+    temperature: Float? = null
 ): ChatRequest {
     return ChatRequest(
         model = model,
         messages = listOf(
             ChatMessage(role = MessageRole.SYSTEM, content = systemPrompt),
             ChatMessage(role = MessageRole.USER, content = userMessage)
-        )
+        ),
+        temperature = temperature
     )
 }
 
@@ -60,13 +66,15 @@ fun createRequestWithSystemPrompt(
  * @param assistantPrompt The optional assistant prompt to guide the AI's behavior
  * @param userMessage The user's message content
  * @param model The AI model to use (default: BuildConfig.DEFAULT_MODEL)
+ * @param temperature Controls response variety (0.0 = deterministic, 2.0 = highly creative)
  * @return A ChatRequest ready to be sent to the API
  */
 fun createRequestWithSystemAndAssistantPrompts(
     systemPrompt: String?,
     assistantPrompt: String?,
     userMessage: String,
-    model: String = BuildConfig.DEFAULT_MODEL
+    model: String = BuildConfig.DEFAULT_MODEL,
+    temperature: Float? = null
 ): ChatRequest {
     val messages = buildList {
         systemPrompt?.let { add(ChatMessage(role = MessageRole.SYSTEM, content = it)) }
@@ -76,7 +84,8 @@ fun createRequestWithSystemAndAssistantPrompts(
 
     return ChatRequest(
         model = model,
-        messages = messages
+        messages = messages,
+        temperature = temperature
     )
 }
 
@@ -86,15 +95,18 @@ fun createRequestWithSystemAndAssistantPrompts(
  *
  * @param messages List of messages in the conversation
  * @param model The AI model to use (default: BuildConfig.DEFAULT_MODEL)
+ * @param temperature Controls response variety (0.0 = deterministic, 2.0 = highly creative)
  * @return A ChatRequest ready to be sent to the API
  */
 fun createConversationRequest(
     messages: List<ChatMessage>,
-    model: String = BuildConfig.DEFAULT_MODEL
+    model: String = BuildConfig.DEFAULT_MODEL,
+    temperature: Float? = null
 ): ChatRequest {
     return ChatRequest(
         model = model,
-        messages = messages
+        messages = messages,
+        temperature = temperature
     )
 }
 

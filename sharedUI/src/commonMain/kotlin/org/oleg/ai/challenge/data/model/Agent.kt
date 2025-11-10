@@ -7,7 +7,8 @@ import kotlin.uuid.Uuid
 
 /**
  * Represents an AI agent configuration for chat interactions.
- * Agents can have their own system prompts, assistant prompts, and AI model selection.
+ * Agents can have their own system prompts, assistant prompts,
+ * AI model selection, and temperature settings.
  */
 data class Agent @OptIn(ExperimentalUuidApi::class, ExperimentalTime::class) constructor(
     val id: String = Uuid.random().toHexString(),
@@ -15,6 +16,7 @@ data class Agent @OptIn(ExperimentalUuidApi::class, ExperimentalTime::class) con
     val systemPrompt: String? = null,
     val assistantPrompt: String? = null,
     val model: String,
+    val temperature: Float = 1.0f,
     val timestamp: Long = Clock.System.now().toEpochMilliseconds()
 ) {
     companion object {

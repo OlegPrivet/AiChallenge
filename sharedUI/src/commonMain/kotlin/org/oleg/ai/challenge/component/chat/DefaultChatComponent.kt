@@ -4,6 +4,7 @@ import co.touchlab.kermit.Logger
 import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
+import com.arkivanov.decompose.value.update
 import com.arkivanov.essenty.lifecycle.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -46,6 +47,9 @@ class DefaultChatComponent(
 
     private val _currentAgentModel = MutableValue("")
     override val currentAgentModel: Value<String> = _currentAgentModel
+
+    private val _currentTemperature = MutableValue(1.0f)
+    override val currentTemperature: Value<Float> = _currentTemperature
 
     init {
         // Setup available agents
@@ -90,6 +94,7 @@ class DefaultChatComponent(
         // Show main agent's messages initially
         updateDisplayedMessages()
         updateCurrentAgentModel()
+        updateCurrentTemperature()
     }
 
     override fun onTextChanged(text: String) {
@@ -102,6 +107,7 @@ class DefaultChatComponent(
         _selectedAgent.value = selectedAgent
         updateDisplayedMessages()
         updateCurrentAgentModel()
+        updateCurrentTemperature()
     }
 
     override fun onModelChanged(model: String) {
@@ -120,6 +126,23 @@ class DefaultChatComponent(
         _currentAgentModel.value = model
     }
 
+    override fun onTemperatureChanged(temperature: Float) {
+        val currentAgent = getCurrentAgent()
+
+        // Update the agent's temperature
+        val updatedAgent = currentAgent.copy(temperature = temperature)
+
+        // Update in AgentManager
+        if (currentAgent.id == "main") {
+            agentManager.setMainAgent(updatedAgent)
+        } else {
+            agentManager.updateSubAgent(updatedAgent)
+        }
+        _selectedAgent.update { it.copy(temperature = temperature) }
+
+        _currentTemperature.value = temperature
+    }
+
     // Convenience method for getting current agent ID
     private fun getCurrentAgent(): Agent = _selectedAgent.value
 
@@ -127,6 +150,12 @@ class DefaultChatComponent(
     private fun updateCurrentAgentModel() {
         val currentAgent = getCurrentAgent()
         _currentAgentModel.value = currentAgent.model
+    }
+
+    // Update the displayed temperature for the current agent
+    private fun updateCurrentTemperature() {
+        val currentAgent = getCurrentAgent()
+        _currentTemperature.value = currentAgent.temperature
     }
 
     override fun onSendMessage() {
@@ -188,8 +217,12 @@ class DefaultChatComponent(
                     )
                 }
 
-                // Create request with the agent's model
-                val request = createConversationRequest(apiMessages, currentAgent.model)
+                // Create request with the agent's model and temperature
+                val request = createConversationRequest(
+                    messages = apiMessages,
+                    model = currentAgent.model,
+                    temperature = currentAgent.temperature
+                )
                 val result = chatApiService.sendChatCompletion(request)
 
                 when (result) {

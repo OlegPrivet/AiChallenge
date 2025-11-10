@@ -7,11 +7,13 @@ import kotlinx.serialization.Serializable
  *
  * @property model The AI model to use for the completion
  * @property messages List of messages in the conversation
+ * @property temperature Controls randomness (0.0 = deterministic, 2.0 = highly creative). Default: 1.0
  */
 @Serializable
 data class ChatRequest(
     val model: String,
-    val messages: List<ChatMessage>
+    val messages: List<ChatMessage>,
+    val temperature: Float? = null
 )
 
 /**

@@ -14,11 +14,13 @@ interface ChatComponent {
     val availableAgents: Value<List<Agent>>  // List of agent IDs (including "main")
     val selectedAgent: Value<Agent>  // Currently selected agent ID
     val currentAgentModel: Value<String>  // Model of the currently selected agent
+    val currentTemperature: Value<Float>  // Temperature of the currently selected agent
 
     fun onTextChanged(text: String)
     fun onSendMessage()
     fun onAgentSelected(agentId: String?)
     fun onModelChanged(model: String)  // Change model for current agent
+    fun onTemperatureChanged(temperature: Float)  // Change temperature for current agent
     fun onNavigateBack()
 }
 

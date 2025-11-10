@@ -59,6 +59,7 @@ fun ChatScreen(
     val availableAgents by component.availableAgents.subscribeAsState()
     val selectedAgent by component.selectedAgent.subscribeAsState()
     val currentAgentModel by component.currentAgentModel.subscribeAsState()
+    val currentTemperature by component.currentTemperature.subscribeAsState()
 
     val lazyListState: LazyListState = rememberLazyListState()
 
@@ -104,6 +105,13 @@ fun ChatScreen(
                     label = "Current AI Model"
                 )
             }
+
+            // Temperature Slider
+            TemperatureSlider(
+                temperature = currentTemperature,
+                onTemperatureChange = component::onTemperatureChanged,
+                modifier = Modifier.fillMaxWidth()
+            )
 
             // Message list
             LazyColumn(
