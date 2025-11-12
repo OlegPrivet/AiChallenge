@@ -44,6 +44,7 @@ import org.oleg.ai.challenge.component.chat.ChatComponent
 import org.oleg.ai.challenge.component.chat.ChatMessage
 import org.oleg.ai.challenge.component.chat.PreviewChatComponent
 import org.oleg.ai.challenge.data.model.Agent
+import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.theme.AppTheme
 import org.oleg.ai.challenge.ui.agentcreation.ModelSelector
 
@@ -293,6 +294,15 @@ private fun ChatMessageItem(message: ChatMessage) {
                         }
                     }
                 }
+
+                // Token usage display for AI messages
+                if (!message.isFromUser && message.usage != null) {
+                    TokenUsageDisplay(
+                        usage = message.usage,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+
                 // Message content
                 SelectionContainer {
                     Markdown(
@@ -302,6 +312,49 @@ private fun ChatMessageItem(message: ChatMessage) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun TokenUsageDisplay(
+    usage: Usage,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Tokens:",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
+        )
+        Text(
+            text = "${usage.promptTokens} in",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
+        )
+        Text(
+            text = "/",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f)
+        )
+        Text(
+            text = "${usage.completionTokens} out",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
+        )
+        Text(
+            text = "/",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.5f)
+        )
+        Text(
+            text = "${usage.totalTokens} total",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.6f)
+        )
     }
 }
 

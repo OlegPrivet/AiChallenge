@@ -240,7 +240,8 @@ class DefaultChatComponent(
                                     isVisibleInUI = true,
                                     agentName = currentAgent.name,
                                     agentId = currentAgentId,
-                                    modelUsed = result.data.model
+                                    modelUsed = result.data.model,
+                                    usage = result.data.usage
                                 )
                                 messagesByAgent[currentAgentId]?.add(aiMessage)
                             }

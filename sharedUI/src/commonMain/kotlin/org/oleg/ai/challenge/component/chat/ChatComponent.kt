@@ -33,7 +33,8 @@ data class ChatMessage @OptIn(ExperimentalTime::class) constructor(
     val isVisibleInUI: Boolean = true,
     val agentName: String? = null,  // ID of the agent that sent/received this message
     val agentId: String? = null,  // ID of the agent that sent/received this message
-    val modelUsed: String? = null  // AI model used to generate this response
+    val modelUsed: String? = null,  // AI model used to generate this response
+    val usage: org.oleg.ai.challenge.data.network.model.Usage? = null  // Token usage statistics
 )
 
 sealed class InputText {

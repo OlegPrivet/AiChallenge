@@ -1,8 +1,8 @@
 package org.oleg.ai.challenge.data.network.di
 
 import co.touchlab.kermit.Logger
-import io.ktor.client.*
-import io.ktor.client.plugins.logging.*
+import io.ktor.client.HttpClient
+import io.ktor.client.plugins.logging.LogLevel
 import org.koin.core.module.Module
 import org.koin.dsl.module
 import org.oleg.ai.challenge.BuildConfig
@@ -19,7 +19,7 @@ val networkModule: Module = module {
         HttpClientFactory.create(
             apiKey = BuildConfig.OPENROUTER_API_KEY,
             enableLogging = true,
-            logLevel = LogLevel.BODY
+            logLevel = LogLevel.ALL
         )
     }
 
