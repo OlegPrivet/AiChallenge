@@ -18,6 +18,7 @@ interface ChatComponent {
 
     fun onTextChanged(text: String)
     fun onSendMessage()
+    fun onSummarizeConversation()
     fun onAgentSelected(agentId: String?)
     fun onModelChanged(model: String)  // Change model for current agent
     fun onTemperatureChanged(temperature: Float)  // Change temperature for current agent

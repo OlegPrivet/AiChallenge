@@ -263,6 +263,121 @@ class DefaultChatComponent(
         }
     }
 
+    override fun onSummarizeConversation() {
+        if (_isLoading.value) return
+
+        val currentAgent = getCurrentAgent()
+        val currentAgentId = currentAgent.id
+
+        // Create hidden summary request message
+        val summaryRequestMessage = ChatMessage(
+            id = generateId(),
+            text = "Сделай краткое резюме нашей истории общения: выдели основные темы, ключевые решения, важные детали и следующие шаги, если они упоминались.",
+            isFromUser = true,
+            role = MessageRole.USER,
+            isVisibleInUI = false,  // Hidden from UI
+            agentId = currentAgentId
+        )
+
+        messagesByAgent[currentAgentId]?.add(summaryRequestMessage)
+        _isLoading.value = true
+
+        logger.d { "Requesting conversation summary from agent $currentAgentId" }
+
+        scope.launch {
+            try {
+                // Get messages to send based on whether this is the main agent
+                val messagesToSend = getAllMessagesMerged()
+
+                // Convert UI messages to API messages
+                val apiMessages = messagesToSend.map { uiMessage ->
+                    val apiRole = when (uiMessage.role) {
+                        MessageRole.SYSTEM -> org.oleg.ai.challenge.data.network.model.MessageRole.SYSTEM
+                        MessageRole.ASSISTANT -> org.oleg.ai.challenge.data.network.model.MessageRole.ASSISTANT
+                        MessageRole.USER -> org.oleg.ai.challenge.data.network.model.MessageRole.USER
+                        null -> if (uiMessage.isFromUser) {
+                            org.oleg.ai.challenge.data.network.model.MessageRole.USER
+                        } else {
+                            org.oleg.ai.challenge.data.network.model.MessageRole.ASSISTANT
+                        }
+                    }
+                    org.oleg.ai.challenge.data.network.model.ChatMessage(
+                        role = apiRole,
+                        content = uiMessage.text
+                    )
+                }
+
+                val request = createConversationRequest(
+                    messages = apiMessages,
+                    model = currentAgent.model,
+                    temperature = currentAgent.temperature
+                )
+                val result = chatApiService.sendChatCompletion(request)
+
+                when (result) {
+                    is ApiResult.Success -> {
+                        val summaryText = result.data.choices.firstOrNull()?.message?.content
+                        if (summaryText != null) {
+                            // Add summary message (visible)
+                            val summaryMessage = ChatMessage(
+                                id = generateId(),
+                                text = summaryText,
+                                isFromUser = false,
+                                role = MessageRole.ASSISTANT,
+                                isVisibleInUI = true,
+                                agentName = currentAgent.name,
+                                agentId = currentAgentId,
+                                modelUsed = result.data.model,
+                                usage = result.data.usage
+                            )
+
+                            // Clear history and rebuild with preserved messages
+                            clearHistoryKeepingPrompts(currentAgentId, summaryMessage)
+                            logger.d { "Conversation summarized and history cleared for agent $currentAgentId" }
+                        } else {
+                            logger.w { "Summary response is null" }
+                            addErrorMessage(currentAgentId, "Failed to generate summary")
+                        }
+                    }
+
+                    is ApiResult.Error -> {
+                        logger.e { "Summary API error: ${result.error.getDescription()}" }
+                        addErrorMessage(currentAgentId, "Summary failed: ${result.error.getDescription()}")
+                    }
+                }
+            } catch (e: Exception) {
+                logger.e(e) { "Unexpected error during summary request" }
+                addErrorMessage(currentAgentId, "Summary error: ${e.message ?: "Unknown error"}")
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    /**
+     * Clears the message history for the specified agent while preserving:
+     * - System prompts (role = SYSTEM)
+     * - Assistant prompts (role = ASSISTANT)
+     * - The provided summary message
+     */
+    private fun clearHistoryKeepingPrompts(agentId: String, summaryMessage: ChatMessage) {
+        val currentMessages = getAllMessagesMerged()
+
+        // Keep only system and assistant prompts
+        val preservedMessages = currentMessages.filter { message ->
+            message.role == MessageRole.SYSTEM || message.role == MessageRole.ASSISTANT && !message.isVisibleInUI
+        }.toMutableList()
+
+        // Add the summary
+        preservedMessages.add(summaryMessage)
+
+        // Replace agent's message list
+        messagesByAgent[agentId] = preservedMessages
+
+        // Update displayed messages
+        updateDisplayedMessages()
+    }
+
     override fun onNavigateBack() {
         agentManager.clear()
         onNavigateBack.invoke()

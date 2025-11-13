@@ -41,4 +41,5 @@ class PreviewChatComponent(
     override fun onModelChanged(model: String) = Unit
     override fun onTemperatureChanged(temperature: Float) = Unit
     override fun onNavigateBack() = Unit
+    override fun onSummarizeConversation() = Unit
 }

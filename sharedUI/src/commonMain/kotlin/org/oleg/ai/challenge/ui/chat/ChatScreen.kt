@@ -32,7 +32,9 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -63,20 +65,35 @@ fun ChatScreen(
     val currentTemperature by component.currentTemperature.subscribeAsState()
 
     val lazyListState: LazyListState = rememberLazyListState()
-
+    val isSummarizeVisibility by remember(isLoading) {
+        derivedStateOf {
+            !isLoading && messages.any { it.isVisibleInUI }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("AI Chat") },
                 navigationIcon = {
-                    IconButton(onClick = { component.onNavigateBack() }) {
+                    IconButton(onClick = component::onNavigateBack) {
                         Icon(
                             Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back"
                         )
                     }
                 },
+                actions = {
+                    IconButton(
+                        onClick = component::onSummarizeConversation,
+                        enabled = isSummarizeVisibility
+                    ) {
+                        Text(
+                            text = "📝",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
             )
         }
     ) { paddingValues ->
