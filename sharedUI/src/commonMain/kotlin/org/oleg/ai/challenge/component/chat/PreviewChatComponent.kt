@@ -3,6 +3,7 @@ package org.oleg.ai.challenge.component.chat
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import org.oleg.ai.challenge.data.model.Agent
+import org.oleg.ai.challenge.data.model.ChatMessage
 
 class PreviewChatComponent(
     override val messages: Value<List<ChatMessage>> = MutableValue(
@@ -40,6 +41,5 @@ class PreviewChatComponent(
     override fun onAgentSelected(agentId: String?) = Unit
     override fun onModelChanged(model: String) = Unit
     override fun onTemperatureChanged(temperature: Float) = Unit
-    override fun onNavigateBack() = Unit
     override fun onSummarizeConversation() = Unit
 }

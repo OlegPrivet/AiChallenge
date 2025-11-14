@@ -16,7 +16,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -29,7 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -43,9 +41,9 @@ import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import com.mikepenz.markdown.m3.Markdown
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.oleg.ai.challenge.component.chat.ChatComponent
-import org.oleg.ai.challenge.component.chat.ChatMessage
 import org.oleg.ai.challenge.component.chat.PreviewChatComponent
 import org.oleg.ai.challenge.data.model.Agent
+import org.oleg.ai.challenge.data.model.ChatMessage
 import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.theme.AppTheme
 import org.oleg.ai.challenge.ui.agentcreation.ModelSelector
@@ -71,32 +69,7 @@ fun ChatScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("AI Chat") },
-                navigationIcon = {
-                    IconButton(onClick = component::onNavigateBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = component::onSummarizeConversation,
-                        enabled = isSummarizeVisibility
-                    ) {
-                        Text(
-                            text = "📝",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
-                }
-            )
-        }
-    ) { paddingValues ->
+    Scaffold { paddingValues ->
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -179,6 +152,15 @@ fun ChatScreen(
                     if (isLoading) {
                         LoadingIndicator()
                     }
+                }
+                IconButton(
+                    onClick = component::onSummarizeConversation,
+                    enabled = isSummarizeVisibility
+                ) {
+                    Text(
+                        text = "📝",
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
             }
         }

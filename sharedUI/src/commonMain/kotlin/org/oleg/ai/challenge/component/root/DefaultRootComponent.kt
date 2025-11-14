@@ -16,9 +16,7 @@ import org.oleg.ai.challenge.component.main.MainComponent
 
 class DefaultRootComponent(
     componentContext: ComponentContext,
-    private val mainComponentFactory: (ComponentContext, onNavigateToAgentCreation: () -> Unit) -> MainComponent,
-    private val agentCreationComponentFactory: (ComponentContext, onNavigateBack: () -> Unit, onNavigateToChat: () -> Unit) -> AgentCreationComponent,
-    private val chatComponentFactory: (ComponentContext, onNavigateBack: () -> Unit) -> ChatComponent
+    private val mainComponentFactory: (ComponentContext) -> MainComponent
 ) : RootComponent, ComponentContext by componentContext {
 
     private val navigation = StackNavigation<Config>()
@@ -36,19 +34,7 @@ class DefaultRootComponent(
     private fun createChild(config: Config, context: ComponentContext): RootComponent.Child =
         when (config) {
             is Config.Main -> RootComponent.Child.MainChild(
-                mainComponentFactory(context) {
-                    navigation.push(Config.AgentCreation)
-                }
-            )
-            is Config.AgentCreation -> RootComponent.Child.AgentCreationChild(
-                agentCreationComponentFactory(
-                    context,
-                    { navigation.pop() },
-                    { navigation.push(Config.Chat) }
-                )
-            )
-            is Config.Chat -> RootComponent.Child.ChatChild(
-                chatComponentFactory(context) { navigation.popToFirst() }
+                mainComponentFactory(context)
             )
         }
 
@@ -56,11 +42,5 @@ class DefaultRootComponent(
     private sealed class Config {
         @Serializable
         data object Main : Config()
-
-        @Serializable
-        data object AgentCreation : Config()
-
-        @Serializable
-        data object Chat : Config()
     }
 }

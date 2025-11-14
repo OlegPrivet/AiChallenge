@@ -16,26 +16,31 @@ val componentModule = module {
     factory<RootComponent> { (componentContext: ComponentContext) ->
         val agentManager = get<AgentManager>()
         val chatApiService = get<org.oleg.ai.challenge.data.network.service.ChatApiService>()
+        val chatRepository = get<org.oleg.ai.challenge.data.repository.ChatRepository>()
 
         DefaultRootComponent(
             componentContext = componentContext,
-            mainComponentFactory = { context, onNavigateToAgentCreation ->
-                DefaultMainComponent(context, onNavigateToAgentCreation)
-            },
-            agentCreationComponentFactory = { context, onNavigateBack, onNavigateToChat ->
-                DefaultAgentCreationComponent(
+            mainComponentFactory = { context ->
+                DefaultMainComponent(
                     componentContext = context,
-                    agentManager = agentManager,
-                    onNavigateBack = onNavigateBack,
-                    onNavigateToChat = onNavigateToChat
-                )
-            },
-            chatComponentFactory = { context, onNavigateBack ->
-                DefaultChatComponent(
-                    componentContext = context,
-                    chatApiService = chatApiService,
-                    agentManager = agentManager,
-                    onNavigateBack = onNavigateBack
+                    chatRepository = chatRepository,
+                    agentCreationComponentFactory = { agentCreationContext, onAgentsCreated, onNavigateBack ->
+                        DefaultAgentCreationComponent(
+                            componentContext = agentCreationContext,
+                            agentManager = agentManager,
+                            onNavigateBack = onNavigateBack,
+                            onAgentsCreated = onAgentsCreated
+                        )
+                    },
+                    chatComponentFactory = { chatContext, chatId->
+                        DefaultChatComponent(
+                            componentContext = chatContext,
+                            chatApiService = chatApiService,
+                            chatRepository = chatRepository,
+                            agentManager = agentManager,
+                            chatId = chatId,
+                        )
+                    }
                 )
             }
         )

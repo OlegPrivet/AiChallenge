@@ -52,6 +52,7 @@ kotlin {
             implementation(libs.multiplatformSettings)
             implementation(libs.kotlinx.datetime)
             implementation(libs.room.runtime)
+            implementation(libs.sqlite.bundled)
             implementation(libs.icons)
             implementation(libs.multiplatform.markdown.renderer.m3)
         }

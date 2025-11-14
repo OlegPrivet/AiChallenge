@@ -11,7 +11,8 @@ class DefaultAgentCreationComponent(
     componentContext: ComponentContext,
     private val agentManager: AgentManager,
     private val onNavigateBack: () -> Unit,
-    private val onNavigateToChat: () -> Unit
+    private val onNavigateToChat: () -> Unit = {},
+    private val onAgentsCreated: ((mainAgent: Agent, subAgents: List<Agent>) -> Unit)? = null
 ) : AgentCreationComponent, ComponentContext by componentContext {
 
     private val _mainSystemPrompt = MutableValue("")
@@ -94,22 +95,28 @@ class DefaultAgentCreationComponent(
     }
 
     override fun onStartChat() {
-        // Create and save main agent
+        // Create main agent
         val mainAgent = Agent.createMain(
             systemPrompt = _mainSystemPrompt.value.ifBlank { null },
             assistantPrompt = _mainAssistantPrompt.value.ifBlank { null },
             model = _selectedModel.value
         )
 
-        agentManager.setMainAgent(mainAgent)
+        // If onAgentsCreated callback is provided, use it (for new split-screen flow)
+        if (onAgentsCreated != null) {
+            onAgentsCreated.invoke(mainAgent, _subAgents.value)
+        } else {
+            // Otherwise, use legacy flow (save to AgentManager and navigate)
+            agentManager.setMainAgent(mainAgent)
 
-        // Save sub-agents
-        _subAgents.value.forEach { agent ->
-            agentManager.addSubAgent(agent)
+            // Save sub-agents
+            _subAgents.value.forEach { agent ->
+                agentManager.addSubAgent(agent)
+            }
+
+            // Navigate to chat
+            onNavigateToChat()
         }
-
-        // Navigate to chat
-        onNavigateToChat()
     }
 
     override fun onNavigateBack() {

@@ -8,20 +8,26 @@ import com.arkivanov.decompose.value.update
 import com.arkivanov.essenty.lifecycle.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import org.oleg.ai.challenge.data.AgentManager
 import org.oleg.ai.challenge.data.model.Agent
+import org.oleg.ai.challenge.data.model.ChatMessage
+import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
 import org.oleg.ai.challenge.data.network.service.ChatApiService
+import org.oleg.ai.challenge.data.repository.ChatRepository
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 class DefaultChatComponent(
     componentContext: ComponentContext,
     private val chatApiService: ChatApiService,
+    private val chatRepository: ChatRepository,
     private val agentManager: AgentManager,
-    private val onNavigateBack: () -> Unit
+    private val chatId: Long? = null,
 ) : ChatComponent, ComponentContext by componentContext {
 
     private val logger = Logger.withTag("DefaultChatComponent")
@@ -42,7 +48,9 @@ class DefaultChatComponent(
     private val _availableAgents = MutableValue<List<Agent>>(emptyList())
     override val availableAgents: Value<List<Agent>> = _availableAgents
 
-    private val _selectedAgent = MutableValue(agentManager.getMainAgent()!!)
+    private val _selectedAgent = MutableValue(
+        agentManager.getMainAgent() ?: Agent.createMain(model = "gpt-4o-mini")
+    )
     override val selectedAgent: Value<Agent> = _selectedAgent
 
     private val _currentAgentModel = MutableValue("")
@@ -52,7 +60,85 @@ class DefaultChatComponent(
     override val currentTemperature: Value<Float> = _currentTemperature
 
     init {
-        // Setup available agents
+        // If chatId is provided, load from repository
+        if (chatId != null) {
+            loadFromRepository(chatId)
+        } else {
+            // Legacy flow: use AgentManager
+            setupFromAgentManager()
+        }
+
+        // Show main agent's messages initially
+        updateDisplayedMessages()
+        updateCurrentAgentModel()
+        updateCurrentTemperature()
+    }
+
+    /**
+     * Load agents and messages from the repository for an existing chat.
+     */
+    private fun loadFromRepository(chatId: Long) {
+        scope.launch {
+            try {
+                // Load agents
+                val agents = chatRepository.getAgentsForChatSuspend(chatId)
+                if (agents.isEmpty()) {
+                    logger.w { "No agents found for chat $chatId, falling back to AgentManager" }
+                    setupFromAgentManager()
+                    return@launch
+                }
+
+                _availableAgents.value = agents
+
+                // Set selected agent to main agent if available
+                val mainAgent = agents.firstOrNull { it.id == "main" } ?: agents.first()
+                _selectedAgent.value = mainAgent
+
+                // Load messages
+                val messages = chatRepository.getMessagesForChatSuspend(chatId)
+
+                // Initialize message storage for each agent with loaded messages
+                agents.forEach { agent ->
+                    val agentMessages = messages
+                        .filter { it.agentId == agent.id }
+                        .toMutableList()
+                    messagesByAgent[agent.id] = agentMessages
+                }
+
+                // Update displayed messages after loading from repository
+                updateDisplayedMessages()
+
+                logger.d { "Loaded chat $chatId with ${agents.size} agents and ${messages.size} messages" }
+
+                // Listen to reactive updates from repository
+                chatRepository.getMessagesForChat(chatId)
+                    .onEach { updatedMessages ->
+                        // Only update if messages changed from external source
+                        val currentMessageCount = messagesByAgent.values.sumOf { it.size }
+                        if (updatedMessages.size != currentMessageCount) {
+                            logger.d { "Messages updated from repository, reloading..." }
+                            // Update messagesByAgent with new messages
+                            agents.forEach { agent ->
+                                messagesByAgent[agent.id] = updatedMessages
+                                    .filter { it.agentId == agent.id }
+                                    .toMutableList()
+                            }
+                            updateDisplayedMessages()
+                        }
+                    }
+                    .launchIn(scope)
+
+            } catch (e: Exception) {
+                logger.e(e) { "Failed to load chat $chatId from repository" }
+                setupFromAgentManager()
+            }
+        }
+    }
+
+    /**
+     * Setup component using AgentManager (legacy flow for new chats).
+     */
+    private fun setupFromAgentManager() {
         val allAgents = agentManager.getAllAgents()
         _availableAgents.value = allAgents
 
@@ -90,11 +176,6 @@ class DefaultChatComponent(
 
             messagesByAgent[agent.id] = agentMessages
         }
-
-        // Show main agent's messages initially
-        updateDisplayedMessages()
-        updateCurrentAgentModel()
-        updateCurrentTemperature()
     }
 
     override fun onTextChanged(text: String) {
@@ -181,6 +262,20 @@ class DefaultChatComponent(
         _inputText.value = ""
         _isLoading.value = true
 
+        // Save user message to repository if chatId is available
+        if (chatId != null) {
+            scope.launch {
+                try {
+                    chatRepository.saveMessage(chatId, userMessage)
+                    // Update chat name from first message
+                    chatRepository.updateChatNameFromFirstMessage(chatId)
+                    logger.d { "Saved user message to chat $chatId" }
+                } catch (e: Exception) {
+                    logger.e(e) { "Failed to save user message to repository" }
+                }
+            }
+        }
+
         logger.d { "Sending user message to agent $currentAgentId: $text" }
 
         // Send API request
@@ -244,6 +339,18 @@ class DefaultChatComponent(
                                     usage = result.data.usage
                                 )
                                 messagesByAgent[currentAgentId]?.add(aiMessage)
+
+                                // Save AI message to repository if chatId is available
+                                if (chatId != null) {
+                                    scope.launch {
+                                        try {
+                                            chatRepository.saveMessage(chatId, aiMessage)
+                                            logger.d { "Saved AI message to chat $chatId" }
+                                        } catch (e: Exception) {
+                                            logger.e(e) { "Failed to save AI message to repository" }
+                                        }
+                                    }
+                                }
                             }
                             updateDisplayedMessages()
                         }
@@ -281,6 +388,18 @@ class DefaultChatComponent(
 
         messagesByAgent[currentAgentId]?.add(summaryRequestMessage)
         _isLoading.value = true
+
+        // Save hidden summary request message to repository if chatId is available
+        if (chatId != null) {
+            scope.launch {
+                try {
+                    chatRepository.saveMessage(chatId, summaryRequestMessage)
+                    logger.d { "Saved summary request message to chat $chatId" }
+                } catch (e: Exception) {
+                    logger.e(e) { "Failed to save summary request message to repository" }
+                }
+            }
+        }
 
         logger.d { "Requesting conversation summary from agent $currentAgentId" }
 
@@ -331,6 +450,18 @@ class DefaultChatComponent(
                                 usage = result.data.usage
                             )
 
+                            // Save summary message to repository if chatId is available
+                            if (chatId != null) {
+                                scope.launch {
+                                    try {
+                                        chatRepository.saveMessage(chatId, summaryMessage)
+                                        logger.d { "Saved summary message to chat $chatId" }
+                                    } catch (e: Exception) {
+                                        logger.e(e) { "Failed to save summary message to repository" }
+                                    }
+                                }
+                            }
+
                             // Clear history and rebuild with preserved messages
                             clearHistoryKeepingPrompts(currentAgentId, summaryMessage)
                             logger.d { "Conversation summarized and history cleared for agent $currentAgentId" }
@@ -376,11 +507,6 @@ class DefaultChatComponent(
 
         // Update displayed messages
         updateDisplayedMessages()
-    }
-
-    override fun onNavigateBack() {
-        agentManager.clear()
-        onNavigateBack.invoke()
     }
 
     /**
