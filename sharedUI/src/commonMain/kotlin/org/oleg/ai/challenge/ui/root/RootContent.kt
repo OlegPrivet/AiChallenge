@@ -7,6 +7,7 @@ import com.arkivanov.decompose.extensions.compose.stack.animation.slide
 import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import org.oleg.ai.challenge.component.root.RootComponent
 import org.oleg.ai.challenge.ui.main.MainScreen
+import org.oleg.ai.challenge.ui.mcp.McpConnectionScreen
 
 @Composable
 fun RootContent(
@@ -20,6 +21,10 @@ fun RootContent(
     ) { child ->
         when (val instance = child.instance) {
             is RootComponent.Child.MainChild -> MainScreen(instance.component)
+            is RootComponent.Child.McpConnectionChild -> McpConnectionScreen(
+                component = instance.component,
+                onBack = component::onBackClicked
+            )
         }
     }
 }

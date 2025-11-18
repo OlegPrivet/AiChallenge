@@ -12,4 +12,6 @@ class PreviewRootComponent(
             instance = RootComponent.Child.MainChild(PreviewMainComponent())
         )
     )
-) : RootComponent
+) : RootComponent {
+    override fun onBackClicked() = Unit
+}

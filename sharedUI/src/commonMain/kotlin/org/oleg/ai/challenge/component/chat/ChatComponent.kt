@@ -3,6 +3,7 @@ package org.oleg.ai.challenge.component.chat
 import com.arkivanov.decompose.value.Value
 import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.ChatMessage
+import org.oleg.ai.challenge.data.model.McpUiState
 
 interface ChatComponent {
     val messages: Value<List<ChatMessage>>
@@ -13,6 +14,7 @@ interface ChatComponent {
     val selectedAgent: Value<Agent>  // Currently selected agent ID
     val currentAgentModel: Value<String>  // Model of the currently selected agent
     val currentTemperature: Value<Float>  // Temperature of the currently selected agent
+    val mcpUiState: Value<McpUiState>
 
     fun onTextChanged(text: String)
     fun onSendMessage()

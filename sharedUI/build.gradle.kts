@@ -43,6 +43,7 @@ kotlin {
             implementation(libs.ktor.client.serialization)
             implementation(libs.ktor.serialization.json)
             implementation(libs.ktor.client.logging)
+            implementation(libs.ktor.client.websockets)
             api(libs.decompose)
             api(libs.decompose.compose)
             api(libs.essenty.coroutines)
@@ -55,6 +56,8 @@ kotlin {
             implementation(libs.sqlite.bundled)
             implementation(libs.icons)
             implementation(libs.multiplatform.markdown.renderer.m3)
+            implementation(libs.mcp.kotlin.client)
+            implementation(libs.mcp.kotlin.core)
         }
 
         commonTest.dependencies {

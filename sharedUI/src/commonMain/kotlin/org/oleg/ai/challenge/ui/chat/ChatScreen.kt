@@ -44,6 +44,8 @@ import org.oleg.ai.challenge.component.chat.ChatComponent
 import org.oleg.ai.challenge.component.chat.PreviewChatComponent
 import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.ChatMessage
+import org.oleg.ai.challenge.data.model.McpProcessingPhase
+import org.oleg.ai.challenge.data.model.McpUiState
 import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.theme.AppTheme
 import org.oleg.ai.challenge.ui.agentcreation.ModelSelector
@@ -61,6 +63,7 @@ fun ChatScreen(
     val selectedAgent by component.selectedAgent.subscribeAsState()
     val currentAgentModel by component.currentAgentModel.subscribeAsState()
     val currentTemperature by component.currentTemperature.subscribeAsState()
+    val mcpUiState by component.mcpUiState.subscribeAsState()
 
     val lazyListState: LazyListState = rememberLazyListState()
     val isSummarizeVisibility by remember(isLoading) {
@@ -86,16 +89,14 @@ fun ChatScreen(
             }
 
             // Model Selector
-            if (currentAgentModel.isNotEmpty()) {
-                ModelSelector(
-                    selectedModel = currentAgentModel,
-                    onModelSelected = { component.onModelChanged(it) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    label = "Current AI Model"
-                )
-            }
+            ModelSelector(
+                selectedModel = currentAgentModel,
+                onModelSelected = { component.onModelChanged(it) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                label = "Current AI Model"
+            )
 
             // Temperature Slider
             TemperatureSlider(
@@ -150,7 +151,7 @@ fun ChatScreen(
                         )
                     }
                     if (isLoading) {
-                        LoadingIndicator()
+                        LoadingIndicator(mcpUiState = mcpUiState)
                     }
                 }
                 IconButton(
@@ -213,7 +214,7 @@ private fun AgentSelector(
 }
 
 @Composable
-private fun LoadingIndicator() {
+private fun LoadingIndicator(mcpUiState: McpUiState = McpUiState()) {
     Row(
         modifier = Modifier
             .wrapContentSize(),
@@ -221,7 +222,10 @@ private fun LoadingIndicator() {
     ) {
         Card(
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer
+                containerColor = if (mcpUiState.isMcpRunning)
+                    MaterialTheme.colorScheme.tertiaryContainer
+                else
+                    MaterialTheme.colorScheme.secondaryContainer
             )
         ) {
             Box(
@@ -234,12 +238,43 @@ private fun LoadingIndicator() {
                 ) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp
+                        strokeWidth = 2.dp,
+                        color = if (mcpUiState.isMcpRunning)
+                            MaterialTheme.colorScheme.tertiary
+                        else
+                            MaterialTheme.colorScheme.secondary
                     )
+
+                    // Show MCP-specific status or default AI thinking message
+                    val statusText = when {
+                        mcpUiState.isMcpRunning -> {
+                            when (mcpUiState.processingPhase) {
+                                McpProcessingPhase.Validating -> "Validating response..."
+                                McpProcessingPhase.InvokingTool -> {
+                                    mcpUiState.currentToolName?.let { "Calling tool: $it" }
+                                        ?: "Invoking MCP tool..."
+                                }
+                                McpProcessingPhase.GeneratingFinalResponse -> "Generating response..."
+                                McpProcessingPhase.Retrying -> "Retrying (${mcpUiState.retryCount})..."
+                                McpProcessingPhase.Idle -> "MCP processing..."
+                            }
+                        }
+                        else -> "AI is thinking..."
+                    }
+
                     Text(
-                        text = "AI is thinking...",
+                        text = statusText,
                         style = MaterialTheme.typography.bodyMedium
                     )
+
+                    // Show tool name badge when MCP is running
+                    if (mcpUiState.isMcpRunning && mcpUiState.currentToolName != null) {
+                        Text(
+                            text = "Tool: ${mcpUiState.currentToolName}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                        )
+                    }
                 }
             }
         }

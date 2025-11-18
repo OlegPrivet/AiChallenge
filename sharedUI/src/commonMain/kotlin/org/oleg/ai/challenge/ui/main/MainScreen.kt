@@ -50,7 +50,8 @@ fun MainScreen(
                 selectedChatId = selectedChatId,
                 onCreateChat = component::onCreateNewChat,
                 onChatClick = component::onSelectChat,
-                onDeleteChat = component::onDeleteChat
+                onDeleteChat = component::onDeleteChat,
+                onNavigateToMcp = component::onNavigateToMcp
             )
         }
 

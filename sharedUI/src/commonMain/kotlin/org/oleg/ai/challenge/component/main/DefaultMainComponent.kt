@@ -36,6 +36,7 @@ private sealed class RightPaneConfig {
 class DefaultMainComponent(
     componentContext: ComponentContext,
     private val chatRepository: ChatRepository,
+    private val onNavigateToMcp: () -> Unit,
     private val agentCreationComponentFactory: (
         componentContext: ComponentContext,
         onAgentsCreated: (mainAgent: Agent, subAgents: List<Agent>) -> Unit,
@@ -141,6 +142,10 @@ class DefaultMainComponent(
         pendingChatId?.let { chatId ->
             handleBackFromAgentCreation(chatId)
         }
+    }
+
+    override fun onNavigateToMcp() {
+        onNavigateToMcp.invoke()
     }
 
     /**

@@ -14,10 +14,13 @@ import kotlinx.coroutines.launch
 import org.oleg.ai.challenge.data.AgentManager
 import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.ChatMessage
+import org.oleg.ai.challenge.data.model.McpUiState
 import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
 import org.oleg.ai.challenge.data.network.service.ChatApiService
+import org.oleg.ai.challenge.data.network.service.ChatOrchestratorService
+import org.oleg.ai.challenge.data.network.service.McpClientService
 import org.oleg.ai.challenge.data.repository.ChatRepository
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -27,14 +30,16 @@ class DefaultChatComponent(
     private val chatApiService: ChatApiService,
     private val chatRepository: ChatRepository,
     private val agentManager: AgentManager,
+    private val chatOrchestratorService: ChatOrchestratorService,
+    private val mcpClientService: McpClientService,
     private val chatId: Long? = null,
 ) : ChatComponent, ComponentContext by componentContext {
 
     private val logger = Logger.withTag("DefaultChatComponent")
     private val scope = coroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
-    // Store messages per agent
-    private val messagesByAgent = mutableMapOf<String, MutableList<ChatMessage>>()
+    // Single list for all messages (sorted by timestamp)
+    private val allMessages = mutableListOf<ChatMessage>()
 
     private val _messages = MutableValue<List<ChatMessage>>(emptyList())
     override val messages: Value<List<ChatMessage>> = _messages
@@ -59,7 +64,17 @@ class DefaultChatComponent(
     private val _currentTemperature = MutableValue(1.0f)
     override val currentTemperature: Value<Float> = _currentTemperature
 
+    private val _mcpUiState = MutableValue(McpUiState())
+    override val mcpUiState: Value<McpUiState> = _mcpUiState
+
     init {
+        // Observe MCP UI state changes from the orchestrator
+        chatOrchestratorService.mcpUiState
+            .onEach { state ->
+                _mcpUiState.value = state
+            }
+            .launchIn(scope)
+
         // If chatId is provided, load from repository
         if (chatId != null) {
             loadFromRepository(chatId)
@@ -72,6 +87,38 @@ class DefaultChatComponent(
         updateDisplayedMessages()
         updateCurrentAgentModel()
         updateCurrentTemperature()
+
+        // Inject tool system prompts when tools become available
+        mcpClientService.availableTools
+            .onEach { tools ->
+                if (tools.isNotEmpty()) {
+                    injectToolSystemPrompts(tools)
+                }
+            }
+            .launchIn(scope)
+    }
+
+    /**
+     * Injects system prompts for available MCP tools into the message history.
+     */
+    private suspend fun injectToolSystemPrompts(tools: List<McpClientService.ToolInfo>) {
+        // Remove existing tool prompts
+        allMessages.removeAll { it.isMcpSystemPrompt }
+
+        // Create and add new tool prompts (no agentId - they're global)
+        val toolPrompts = chatOrchestratorService.createToolSystemPrompts(
+            enabledTools = tools,
+            agentId = null
+        )
+
+        // Insert tool prompts at the beginning (before all other messages)
+        allMessages.addAll(0, toolPrompts)
+        chatRepository.saveMessages(chatId!!, allMessages)
+
+        logger.d { "Injected ${toolPrompts.size} tool system prompts" }
+
+        // Update displayed messages after injection
+        updateDisplayedMessages()
     }
 
     /**
@@ -94,16 +141,10 @@ class DefaultChatComponent(
                 val mainAgent = agents.firstOrNull { it.id == "main" } ?: agents.first()
                 _selectedAgent.value = mainAgent
 
-                // Load messages
+                // Load messages directly into allMessages
                 val messages = chatRepository.getMessagesForChatSuspend(chatId)
-
-                // Initialize message storage for each agent with loaded messages
-                agents.forEach { agent ->
-                    val agentMessages = messages
-                        .filter { it.agentId == agent.id }
-                        .toMutableList()
-                    messagesByAgent[agent.id] = agentMessages
-                }
+                allMessages.clear()
+                allMessages.addAll(messages.sortedBy { it.timestamp })
 
                 // Update displayed messages after loading from repository
                 updateDisplayedMessages()
@@ -114,15 +155,10 @@ class DefaultChatComponent(
                 chatRepository.getMessagesForChat(chatId)
                     .onEach { updatedMessages ->
                         // Only update if messages changed from external source
-                        val currentMessageCount = messagesByAgent.values.sumOf { it.size }
-                        if (updatedMessages.size != currentMessageCount) {
+                        if (updatedMessages.size != allMessages.size) {
                             logger.d { "Messages updated from repository, reloading..." }
-                            // Update messagesByAgent with new messages
-                            agents.forEach { agent ->
-                                messagesByAgent[agent.id] = updatedMessages
-                                    .filter { it.agentId == agent.id }
-                                    .toMutableList()
-                            }
+                            allMessages.clear()
+                            allMessages.addAll(updatedMessages.sortedBy { it.timestamp })
                             updateDisplayedMessages()
                         }
                     }
@@ -139,16 +175,16 @@ class DefaultChatComponent(
      * Setup component using AgentManager (legacy flow for new chats).
      */
     private fun setupFromAgentManager() {
-        val allAgents = agentManager.getAllAgents()
-        _availableAgents.value = allAgents
+        val agents = agentManager.getAllAgents()
+        _availableAgents.value = agents
 
-        // Initialize message storage for each agent
-        allAgents.forEach { agent ->
-            val agentMessages = mutableListOf<ChatMessage>()
+        // Clear and initialize messages for all agents
+        allMessages.clear()
 
+        agents.forEach { agent ->
             // Add system prompt if exists
             agent.systemPrompt?.let { prompt ->
-                agentMessages.add(
+                allMessages.add(
                     ChatMessage(
                         id = generateId(),
                         text = prompt,
@@ -162,7 +198,7 @@ class DefaultChatComponent(
 
             // Add assistant prompt if exists
             agent.assistantPrompt?.let { prompt ->
-                agentMessages.add(
+                allMessages.add(
                     ChatMessage(
                         id = generateId(),
                         text = prompt,
@@ -173,8 +209,6 @@ class DefaultChatComponent(
                     )
                 )
             }
-
-            messagesByAgent[agent.id] = agentMessages
         }
     }
 
@@ -246,7 +280,7 @@ class DefaultChatComponent(
         val currentAgent = getCurrentAgent()
         val currentAgentId = currentAgent.id
 
-        // Add user message to the current agent's history
+        // Add user message to the message history
         val userMessage = ChatMessage(
             id = generateId(),
             text = text,
@@ -257,7 +291,7 @@ class DefaultChatComponent(
             agentId = currentAgentId
         )
 
-        messagesByAgent[currentAgentId]?.add(userMessage)
+        allMessages.add(userMessage)
         updateDisplayedMessages()
         _inputText.value = ""
         _isLoading.value = true
@@ -278,87 +312,62 @@ class DefaultChatComponent(
 
         logger.d { "Sending user message to agent $currentAgentId: $text" }
 
-        // Send API request
+        // Send API request through orchestrator
         scope.launch {
             try {
                 // Get messages to send based on whether this is the main agent
                 val messagesToSend = if (currentAgentId == "main") {
-                    // Main agent gets ALL messages from all agents, sorted by timestamp
-                    getAllMessagesMerged()
+                    // Main agent gets ALL messages
+                    allMessages.toList()
                 } else {
-                    // Sub-agent gets only messages related to this specific agent:
-                    // - Its system/assistant prompts (isVisibleInUI = false)
-                    // - Only user messages and AI responses for THIS agent (agentId matches)
-                    getAllMessagesMerged().filter { message ->
-                        message.agentId == currentAgentId
+                    // Sub-agent gets only messages related to this specific agent
+                    // plus MCP system prompts (which have no agentId)
+                    allMessages.filter { message ->
+                        message.agentId == currentAgentId ||
+                        message.agentId == null ||
+                        message.isMcpSystemPrompt
                     }
                 }
 
-                // Convert UI messages to API messages
-                val apiMessages = messagesToSend.map { uiMessage ->
-                    val apiRole = when (uiMessage.role) {
-                        MessageRole.SYSTEM -> org.oleg.ai.challenge.data.network.model.MessageRole.SYSTEM
-                        MessageRole.ASSISTANT -> org.oleg.ai.challenge.data.network.model.MessageRole.ASSISTANT
-                        MessageRole.USER -> org.oleg.ai.challenge.data.network.model.MessageRole.USER
-                        null -> if (uiMessage.isFromUser) {
-                            org.oleg.ai.challenge.data.network.model.MessageRole.USER
-                        } else {
-                            org.oleg.ai.challenge.data.network.model.MessageRole.ASSISTANT
-                        }
-                    }
-                    org.oleg.ai.challenge.data.network.model.ChatMessage(
-                        role = apiRole,
-                        content = uiMessage.text
-                    )
-                }
-
-                // Create request with the agent's model and temperature
-                val request = createConversationRequest(
-                    messages = apiMessages,
+                // Use orchestrator to handle message with MCP integration
+                val result = chatOrchestratorService.handleUserMessage(
+                    conversationHistory = messagesToSend,
                     model = currentAgent.model,
                     temperature = currentAgent.temperature
                 )
-                val result = chatApiService.sendChatCompletion(request)
 
                 when (result) {
-                    is ApiResult.Success -> {
-                        if (result.data.choices.isEmpty()) {
-                            logger.w { "AI response content is null" }
-                            addErrorMessage(currentAgentId, "No response received from AI")
-                        } else {
-                            result.data.choices.forEach { choice ->
-                                val aiMessage = ChatMessage(
-                                    id = generateId(),
-                                    text = choice.message.content,
-                                    isFromUser = false,
-                                    role = MessageRole.ASSISTANT,
-                                    isVisibleInUI = true,
-                                    agentName = currentAgent.name,
-                                    agentId = currentAgentId,
-                                    modelUsed = result.data.model,
-                                    usage = result.data.usage
-                                )
-                                messagesByAgent[currentAgentId]?.add(aiMessage)
+                    is ChatOrchestratorService.OrchestratorResult.Success -> {
+                        val aiMessage = ChatMessage(
+                            id = generateId(),
+                            text = result.finalResponse,
+                            isFromUser = false,
+                            role = MessageRole.ASSISTANT,
+                            isVisibleInUI = true,
+                            agentName = currentAgent.name,
+                            agentId = currentAgentId,
+                            modelUsed = result.model,
+                            usage = result.usage
+                        )
+                        allMessages.add(aiMessage)
 
-                                // Save AI message to repository if chatId is available
-                                if (chatId != null) {
-                                    scope.launch {
-                                        try {
-                                            chatRepository.saveMessage(chatId, aiMessage)
-                                            logger.d { "Saved AI message to chat $chatId" }
-                                        } catch (e: Exception) {
-                                            logger.e(e) { "Failed to save AI message to repository" }
-                                        }
-                                    }
+                        // Save AI message to repository if chatId is available
+                        if (chatId != null) {
+                            scope.launch {
+                                try {
+                                    chatRepository.saveMessage(chatId, aiMessage)
+                                    logger.d { "Saved AI message to chat $chatId" }
+                                } catch (e: Exception) {
+                                    logger.e(e) { "Failed to save AI message to repository" }
                                 }
                             }
-                            updateDisplayedMessages()
                         }
+                        updateDisplayedMessages()
                     }
 
-                    is ApiResult.Error -> {
-                        logger.e { "API error: ${result.error.getDescription()}" }
-                        addErrorMessage(currentAgentId, "Error: ${result.error.getDescription()}")
+                    is ChatOrchestratorService.OrchestratorResult.Error -> {
+                        logger.e { "Orchestrator error: ${result.message}" }
+                        addErrorMessage(currentAgentId, "Error: ${result.message}")
                     }
                 }
             } catch (e: Exception) {
@@ -386,7 +395,7 @@ class DefaultChatComponent(
             agentId = currentAgentId
         )
 
-        messagesByAgent[currentAgentId]?.add(summaryRequestMessage)
+        allMessages.add(summaryRequestMessage)
         _isLoading.value = true
 
         // Save hidden summary request message to repository if chatId is available
@@ -405,8 +414,8 @@ class DefaultChatComponent(
 
         scope.launch {
             try {
-                // Get messages to send based on whether this is the main agent
-                val messagesToSend = getAllMessagesMerged()
+                // Get all messages for summary
+                val messagesToSend = allMessages.toList()
 
                 // Convert UI messages to API messages
                 val apiMessages = messagesToSend.map { uiMessage ->
@@ -486,24 +495,26 @@ class DefaultChatComponent(
     }
 
     /**
-     * Clears the message history for the specified agent while preserving:
+     * Clears the message history while preserving:
      * - System prompts (role = SYSTEM)
-     * - Assistant prompts (role = ASSISTANT)
+     * - Assistant prompts (role = ASSISTANT, not visible)
+     * - MCP system prompts
      * - The provided summary message
      */
     private fun clearHistoryKeepingPrompts(agentId: String, summaryMessage: ChatMessage) {
-        val currentMessages = getAllMessagesMerged()
-
-        // Keep only system and assistant prompts
-        val preservedMessages = currentMessages.filter { message ->
-            message.role == MessageRole.SYSTEM || message.role == MessageRole.ASSISTANT && !message.isVisibleInUI
+        // Keep only system prompts, assistant prompts, and MCP prompts
+        val preservedMessages = allMessages.filter { message ->
+            message.role == MessageRole.SYSTEM ||
+            (message.role == MessageRole.ASSISTANT && !message.isVisibleInUI) ||
+            message.isMcpSystemPrompt
         }.toMutableList()
 
         // Add the summary
         preservedMessages.add(summaryMessage)
 
-        // Replace agent's message list
-        messagesByAgent[agentId] = preservedMessages
+        // Replace all messages
+        allMessages.clear()
+        allMessages.addAll(preservedMessages)
 
         // Update displayed messages
         updateDisplayedMessages()
@@ -511,25 +522,14 @@ class DefaultChatComponent(
 
     /**
      * Updates the displayed messages.
-     * ALWAYS shows all messages merged chronologically regardless of selected agent.
-     * Agent selection only affects which messages are sent in API requests.
+     * Shows all messages sorted chronologically by timestamp.
      */
     private fun updateDisplayedMessages() {
-        // Always show all messages from all agents merged and sorted by timestamp
-        _messages.value = getAllMessagesMerged()
+        _messages.value = allMessages.sortedBy { it.timestamp }
     }
 
     /**
-     * Gets all messages from all agents merged and sorted chronologically by timestamp.
-     */
-    private fun getAllMessagesMerged(): List<ChatMessage> {
-        return messagesByAgent.values
-            .flatten()
-            .sortedBy { it.timestamp }
-    }
-
-    /**
-     * Adds an error message to the specified agent's chat history.
+     * Adds an error message to the chat history.
      */
     private fun addErrorMessage(agentId: String, errorText: String) {
         val errorMessage = ChatMessage(
@@ -538,7 +538,7 @@ class DefaultChatComponent(
             isFromUser = false,
             agentId = agentId
         )
-        messagesByAgent[agentId]?.add(errorMessage)
+        allMessages.add(errorMessage)
         updateDisplayedMessages()
     }
 

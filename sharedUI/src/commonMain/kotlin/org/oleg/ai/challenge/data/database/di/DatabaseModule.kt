@@ -8,6 +8,8 @@ import org.oleg.ai.challenge.data.database.AppDatabase
 import org.oleg.ai.challenge.data.database.getDatabaseBuilder
 import org.oleg.ai.challenge.data.repository.ChatRepository
 import org.oleg.ai.challenge.data.repository.DefaultChatRepository
+import org.oleg.ai.challenge.data.repository.DefaultMcpServerRepository
+import org.oleg.ai.challenge.data.repository.McpServerRepository
 
 /**
  * Koin module for database and repository dependencies.
@@ -27,6 +29,7 @@ val databaseModule = module {
     single { get<AppDatabase>().chatDao() }
     single { get<AppDatabase>().agentDao() }
     single { get<AppDatabase>().messageDao() }
+    single { get<AppDatabase>().mcpServerDao() }
 
     // Provide repositories
     single<ChatRepository> {
@@ -34,6 +37,12 @@ val databaseModule = module {
             chatDao = get(),
             agentDao = get(),
             messageDao = get()
+        )
+    }
+
+    single<McpServerRepository> {
+        DefaultMcpServerRepository(
+            mcpServerDao = get(),
         )
     }
 }

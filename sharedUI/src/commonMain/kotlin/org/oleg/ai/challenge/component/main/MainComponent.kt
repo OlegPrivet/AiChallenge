@@ -27,6 +27,7 @@ interface MainComponent {
     fun onDeleteChat(chatId: Long)
     fun onChatCreated()  // Called when agent creation is completed
     fun onBackFromAgentCreation()  // Called when user cancels agent creation
+    fun onNavigateToMcp()  // Navigate to MCP connection screen
 
     companion object {
         const val NO_SELECTION = -1L

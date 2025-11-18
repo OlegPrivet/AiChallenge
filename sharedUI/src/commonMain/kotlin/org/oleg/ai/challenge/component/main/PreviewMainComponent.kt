@@ -17,4 +17,5 @@ class PreviewMainComponent : MainComponent {
     override fun onDeleteChat(chatId: Long) = Unit
     override fun onChatCreated() = Unit
     override fun onBackFromAgentCreation() = Unit
+    override fun onNavigateToMcp() = Unit
 }

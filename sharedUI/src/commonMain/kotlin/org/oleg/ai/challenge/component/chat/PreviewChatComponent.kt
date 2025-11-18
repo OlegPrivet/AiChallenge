@@ -4,6 +4,7 @@ import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
 import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.ChatMessage
+import org.oleg.ai.challenge.data.model.McpUiState
 
 class PreviewChatComponent(
     override val messages: Value<List<ChatMessage>> = MutableValue(
@@ -34,7 +35,8 @@ class PreviewChatComponent(
         timestamp = 5313
     )),
     override val currentAgentModel: Value<String> = MutableValue("gpt-4"),
-    override val currentTemperature: Value<Float> = MutableValue(1.0f)
+    override val currentTemperature: Value<Float> = MutableValue(1.0f),
+    override val mcpUiState: Value<McpUiState> = MutableValue(McpUiState())
 ) : ChatComponent {
     override fun onTextChanged(text: String) = Unit
     override fun onSendMessage() = Unit
