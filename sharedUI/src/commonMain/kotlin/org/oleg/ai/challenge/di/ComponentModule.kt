@@ -6,6 +6,7 @@ import org.oleg.ai.challenge.component.agentcreation.DefaultAgentCreationCompone
 import org.oleg.ai.challenge.component.chat.DefaultChatComponent
 import org.oleg.ai.challenge.component.main.DefaultMainComponent
 import org.oleg.ai.challenge.component.mcp.DefaultMcpConnectionComponent
+import org.oleg.ai.challenge.component.planner.DefaultPlannerComponent
 import org.oleg.ai.challenge.component.root.DefaultRootComponent
 import org.oleg.ai.challenge.component.root.RootComponent
 import org.oleg.ai.challenge.data.AgentManager
@@ -46,6 +47,14 @@ val componentModule = module {
                             chatOrchestratorService = chatOrchestratorService,
                             mcpClientService = mcpClientService,
                             chatId = chatId,
+                        )
+                    },
+                    plannerComponentFactory = { plannerContext, onNavigateBack ->
+                        DefaultPlannerComponent(
+                            componentContext = plannerContext,
+                            mcpClientService = mcpClientService,
+                            chatOrchestratorService = chatOrchestratorService,
+                            onNavigateBack = onNavigateBack
                         )
                     }
                 )

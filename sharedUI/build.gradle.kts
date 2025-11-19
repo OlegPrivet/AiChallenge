@@ -58,6 +58,7 @@ kotlin {
             implementation(libs.multiplatform.markdown.renderer.m3)
             implementation(libs.mcp.kotlin.client)
             implementation(libs.mcp.kotlin.core)
+            implementation(libs.meeseeks)
         }
 
         commonTest.dependencies {

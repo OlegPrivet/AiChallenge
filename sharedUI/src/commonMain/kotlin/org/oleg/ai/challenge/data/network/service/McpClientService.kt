@@ -12,11 +12,19 @@ import io.modelcontextprotocol.kotlin.sdk.GetPromptRequest
 import io.modelcontextprotocol.kotlin.sdk.Implementation
 import io.modelcontextprotocol.kotlin.sdk.ReadResourceRequest
 import io.modelcontextprotocol.kotlin.sdk.client.Client
+import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
 import io.modelcontextprotocol.kotlin.sdk.client.StdioClientTransport
-import io.modelcontextprotocol.kotlin.sdk.client.mcpSseTransport
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
  * MCP Client Service for connecting to and communicating with MCP servers.
@@ -33,6 +41,9 @@ import kotlinx.coroutines.flow.asStateFlow
 class McpClientService(
     private val customLogger: Logger,
 ) {
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var pingJob: Job? = null
     private var mcpClient: Client? = null
     private var currentHttpClient: HttpClient? = null
     private var currentProcess: McpProcess? = null
@@ -52,6 +63,7 @@ class McpClientService(
     enum class McpTransportType {
         /** Server-Sent Events over HTTP - for remote servers */
         SSE,
+
         /** Standard Input/Output - for local process communication */
         STDIO
     }
@@ -216,6 +228,12 @@ class McpClientService(
 
             // Fetch available tools and resources
             refreshCapabilities()
+            pingJob = scope.launch {
+                while (isActive) {
+                    delay(5000)
+                    client.ping()
+                }
+            }
 
             customLogger.i { "Successfully connected to MCP server: ${config.serverUrl}" }
             Result.success(Unit)
@@ -342,15 +360,15 @@ class McpClientService(
         currentHttpClient = httpClient
 
         // Create SSE transport with headers
-        val transport= httpClient.mcpSseTransport(urlString = urlWithParams) {
+        val transport = SseClientTransport(httpClient, urlString = urlWithParams) {
             // Add all configured headers
-            method = HttpMethod.Post
+            method = HttpMethod.Get
             config.headers.forEach { (key, value) ->
                 headers.append(key, value)
             }
             headers.append("Content-Type", "application/json")
+            headers.append("User-Agent", "MCP-Client/1.0")
             headers.append("Accept", "text/event-stream, application/json")
-//            setBody("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"roots\":{\"listChanged\":true},\"sampling\":{},\"elicitation\":{}},\"clientInfo\":{\"name\":\"ExampleClient\",\"title\":\"Example Client Display Name\",\"version\":\"1.0.0\"}}}")
         }
 
         return@run transport
@@ -398,6 +416,7 @@ class McpClientService(
      */
     suspend fun disconnect() {
         try {
+            pingJob?.cancel()
             customLogger.i { "Disconnecting from MCP server..." }
 
             // Destroy process if it exists (for STDIO transport)
@@ -512,6 +531,7 @@ class McpClientService(
 
             // Call listTools - returns ListToolsResult
             val result = client.listTools()
+            customLogger.d { result.tools.joinToString(separator = "\n")}
 
             // Extract tool information
             val tools = result.tools.map { tool ->

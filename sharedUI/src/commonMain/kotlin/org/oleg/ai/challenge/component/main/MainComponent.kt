@@ -4,6 +4,7 @@ import com.arkivanov.decompose.router.slot.ChildSlot
 import com.arkivanov.decompose.value.Value
 import org.oleg.ai.challenge.component.agentcreation.AgentCreationComponent
 import org.oleg.ai.challenge.component.chat.ChatComponent
+import org.oleg.ai.challenge.component.planner.PlannerComponent
 import org.oleg.ai.challenge.data.model.Conversation
 
 /**
@@ -28,6 +29,7 @@ interface MainComponent {
     fun onChatCreated()  // Called when agent creation is completed
     fun onBackFromAgentCreation()  // Called when user cancels agent creation
     fun onNavigateToMcp()  // Navigate to MCP connection screen
+    fun onNavigateToPlanner()  // Navigate to Planner Mode screen
 
     companion object {
         const val NO_SELECTION = -1L
@@ -46,6 +48,11 @@ interface MainComponent {
          * Chat screen for an existing chat.
          */
         data class Chat(val component: ChatComponent) : RightPaneChild()
+
+        /**
+         * Planner Mode screen.
+         */
+        data class Planner(val component: PlannerComponent) : RightPaneChild()
 
         /**
          * Empty/placeholder state (no chat selected).

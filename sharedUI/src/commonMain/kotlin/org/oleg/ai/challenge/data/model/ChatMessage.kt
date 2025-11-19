@@ -30,12 +30,13 @@ data class ChatMessage @OptIn(ExperimentalTime::class) constructor(
          */
         @OptIn(ExperimentalTime::class)
         fun toolSystemPrompt(
+            index: Int,
             toolName: String,
             description: String,
             agentId: String? = null
         ): ChatMessage {
             return ChatMessage(
-                id = "${Clock.System.now()}_tool_$toolName",
+                id = "${Clock.System.now()}_tool_$toolName$index",
                 text = description,
                 isFromUser = false,
                 role = MessageRole.SYSTEM,

@@ -69,33 +69,35 @@ class DefaultChatComponent(
 
     init {
         // Observe MCP UI state changes from the orchestrator
-        chatOrchestratorService.mcpUiState
-            .onEach { state ->
-                _mcpUiState.value = state
-            }
-            .launchIn(scope)
+        scope.launch {
 
-        // If chatId is provided, load from repository
-        if (chatId != null) {
-            loadFromRepository(chatId)
-        } else {
-            // Legacy flow: use AgentManager
-            setupFromAgentManager()
-        }
-
-        // Show main agent's messages initially
-        updateDisplayedMessages()
-        updateCurrentAgentModel()
-        updateCurrentTemperature()
-
-        // Inject tool system prompts when tools become available
-        mcpClientService.availableTools
-            .onEach { tools ->
-                if (tools.isNotEmpty()) {
-                    injectToolSystemPrompts(tools)
+            chatOrchestratorService.mcpUiState
+                .onEach { state ->
+                    _mcpUiState.value = state
                 }
+                .launchIn(scope)
+
+            // If chatId is provided, load from repository
+            if (chatId != null) {
+                loadFromRepository(chatId)
             }
-            .launchIn(scope)
+
+            setupFromAgentManager()
+
+            // Show main agent's messages initially
+            updateDisplayedMessages()
+            updateCurrentAgentModel()
+            updateCurrentTemperature()
+
+            // Inject tool system prompts when tools become available
+            mcpClientService.availableTools
+                .onEach { tools ->
+                    if (tools.isNotEmpty()) {
+                        injectToolSystemPrompts(tools)
+                    }
+                }
+                .launchIn(scope)
+        }
     }
 
     /**
@@ -112,7 +114,7 @@ class DefaultChatComponent(
         )
 
         // Insert tool prompts at the beginning (before all other messages)
-        allMessages.addAll(0, toolPrompts)
+        allMessages.addAll(toolPrompts)
         chatRepository.saveMessages(chatId!!, allMessages)
 
         logger.d { "Injected ${toolPrompts.size} tool system prompts" }
@@ -124,62 +126,62 @@ class DefaultChatComponent(
     /**
      * Load agents and messages from the repository for an existing chat.
      */
-    private fun loadFromRepository(chatId: Long) {
-        scope.launch {
-            try {
-                // Load agents
-                val agents = chatRepository.getAgentsForChatSuspend(chatId)
-                if (agents.isEmpty()) {
-                    logger.w { "No agents found for chat $chatId, falling back to AgentManager" }
-                    setupFromAgentManager()
-                    return@launch
-                }
-
-                _availableAgents.value = agents
-
-                // Set selected agent to main agent if available
-                val mainAgent = agents.firstOrNull { it.id == "main" } ?: agents.first()
-                _selectedAgent.value = mainAgent
-
-                // Load messages directly into allMessages
-                val messages = chatRepository.getMessagesForChatSuspend(chatId)
-                allMessages.clear()
-                allMessages.addAll(messages.sortedBy { it.timestamp })
-
-                // Update displayed messages after loading from repository
-                updateDisplayedMessages()
-
-                logger.d { "Loaded chat $chatId with ${agents.size} agents and ${messages.size} messages" }
-
-                // Listen to reactive updates from repository
-                chatRepository.getMessagesForChat(chatId)
-                    .onEach { updatedMessages ->
-                        // Only update if messages changed from external source
-                        if (updatedMessages.size != allMessages.size) {
-                            logger.d { "Messages updated from repository, reloading..." }
-                            allMessages.clear()
-                            allMessages.addAll(updatedMessages.sortedBy { it.timestamp })
-                            updateDisplayedMessages()
-                        }
-                    }
-                    .launchIn(scope)
-
-            } catch (e: Exception) {
-                logger.e(e) { "Failed to load chat $chatId from repository" }
+    private suspend fun loadFromRepository(chatId: Long) {
+        try {
+            // Load agents
+            val agents = chatRepository.getAgentsForChatSuspend(chatId)
+            if (agents.isEmpty()) {
+                logger.w { "No agents found for chat $chatId, falling back to AgentManager" }
                 setupFromAgentManager()
+                return
             }
+
+            _availableAgents.value = agents
+
+            // Set selected agent to main agent if available
+            val mainAgent = agents.firstOrNull { it.id == "main" } ?: agents.first()
+            _selectedAgent.value = mainAgent
+
+            // Load messages directly into allMessages
+            val messages = chatRepository.getMessagesForChatSuspend(chatId)
+            allMessages.clear()
+            allMessages.addAll(messages.sortedBy { it.timestamp })
+
+            // Update displayed messages after loading from repository
+            updateDisplayedMessages()
+
+            logger.d { "Loaded chat $chatId with ${agents.size} agents and ${messages.size} messages" }
+
+            // Listen to reactive updates from repository
+            chatRepository.getMessagesForChat(chatId)
+                .onEach { updatedMessages ->
+                    // Only update if messages changed from external source
+                    if (updatedMessages.size != allMessages.size) {
+                        logger.d { "Messages updated from repository, reloading..." }
+                        allMessages.clear()
+                        updateDisplayedMessages()
+                        allMessages.addAll(updatedMessages.sortedBy { it.timestamp })
+                        updateDisplayedMessages()
+                    }
+                }
+                .launchIn(scope)
+
+        } catch (e: Exception) {
+            logger.e(e) { "Failed to load chat $chatId from repository" }
+            setupFromAgentManager()
         }
     }
 
     /**
      * Setup component using AgentManager (legacy flow for new chats).
      */
-    private fun setupFromAgentManager() {
-        val agents = agentManager.getAllAgents()
+    private suspend fun setupFromAgentManager() {
+        val agents = chatRepository.getAgentsForChatSuspend(chatId!!)
         _availableAgents.value = agents
 
-        // Clear and initialize messages for all agents
-        allMessages.clear()
+        val agentIds = agents.map { it.id }
+        val messagesAgentIds = allMessages.map { it.agentId }
+        if (messagesAgentIds.any { agentIds.contains(it) }) return
 
         agents.forEach { agent ->
             // Add system prompt if exists
@@ -324,8 +326,8 @@ class DefaultChatComponent(
                     // plus MCP system prompts (which have no agentId)
                     allMessages.filter { message ->
                         message.agentId == currentAgentId ||
-                        message.agentId == null ||
-                        message.isMcpSystemPrompt
+                                message.agentId == null ||
+                                message.isMcpSystemPrompt
                     }
                 }
 
@@ -333,7 +335,8 @@ class DefaultChatComponent(
                 val result = chatOrchestratorService.handleUserMessage(
                     conversationHistory = messagesToSend,
                     model = currentAgent.model,
-                    temperature = currentAgent.temperature
+                    temperature = currentAgent.temperature,
+                    toolName = "get_messages",
                 )
 
                 when (result) {
@@ -505,8 +508,8 @@ class DefaultChatComponent(
         // Keep only system prompts, assistant prompts, and MCP prompts
         val preservedMessages = allMessages.filter { message ->
             message.role == MessageRole.SYSTEM ||
-            (message.role == MessageRole.ASSISTANT && !message.isVisibleInUI) ||
-            message.isMcpSystemPrompt
+                    (message.role == MessageRole.ASSISTANT && !message.isVisibleInUI) ||
+                    message.isMcpSystemPrompt
         }.toMutableList()
 
         // Add the summary
@@ -544,5 +547,5 @@ class DefaultChatComponent(
 
     @OptIn(ExperimentalTime::class)
     private fun generateId(): String =
-        "${Clock.System.now()}_${(0..1000).random()}"
+        "${Clock.System.now()}_${(0..1000).random()}_${(0..500).random()}"
 }

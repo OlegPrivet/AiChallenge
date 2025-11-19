@@ -70,7 +70,8 @@ class ChatOrchestratorService(
     suspend fun handleUserMessage(
         conversationHistory: List<ChatMessage>,
         model: String,
-        temperature: Float
+        temperature: Float,
+        toolName: String,
     ): OrchestratorResult {
         logger.d { "Processing user message with MCP orchestration" }
 
@@ -113,10 +114,10 @@ class ChatOrchestratorService(
             // Not a JSON object, reset to empty map
             emptyMap()
         }
-        logger.i { "Valid tool call for 'get_current'" }
+        logger.i { "Valid tool call for 'get_messages'" }
         return processMcpToolCall(
             apiMessages = apiMessages,
-            toolName = "get_current",
+            toolName = toolName,
             arguments = args,
             model = model,
             temperature = temperature
@@ -421,20 +422,16 @@ class ChatOrchestratorService(
         enabledTools: List<McpClientService.ToolInfo>,
         agentId: String? = null
     ): List<ChatMessage> {
+        var index = 0
         return enabledTools.map { tool ->
+            index++
             ChatMessage.toolSystemPrompt(
+                index = index,
                 toolName = tool.name,
-                description = buildToolPrompt(tool),
+                description = tool.description + "IF YOU CHOOSE ME, RETURN ONLY IN THE FORM OF A JSON OBJECT ${tool.inputSchema} WITH VALID DATA!!!!\n",
                 agentId = agentId
             )
         }
-    }
-
-    /**
-     * Builds a system prompt for a tool.
-     */
-    private fun buildToolPrompt(tool: McpClientService.ToolInfo): String {
-        return tool.description
     }
 
     /**

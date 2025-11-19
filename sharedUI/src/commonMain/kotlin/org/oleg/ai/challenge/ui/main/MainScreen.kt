@@ -19,6 +19,7 @@ import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import org.oleg.ai.challenge.component.main.MainComponent
 import org.oleg.ai.challenge.ui.agentcreation.AgentCreationScreen
 import org.oleg.ai.challenge.ui.chat.ChatScreen
+import org.oleg.ai.challenge.ui.planner.PlannerScreen
 
 /**
  * Main screen with split-screen layout.
@@ -51,7 +52,8 @@ fun MainScreen(
                 onCreateChat = component::onCreateNewChat,
                 onChatClick = component::onSelectChat,
                 onDeleteChat = component::onDeleteChat,
-                onNavigateToMcp = component::onNavigateToMcp
+                onNavigateToMcp = component::onNavigateToMcp,
+                onNavigateToPlanner = component::onNavigateToPlanner
             )
         }
 
@@ -80,6 +82,13 @@ fun MainScreen(
                     is MainComponent.RightPaneChild.Chat -> {
                         // Show chat screen for selected chat
                         ChatScreen(
+                            component = instance.component
+                        )
+                    }
+
+                    is MainComponent.RightPaneChild.Planner -> {
+                        // Show planner mode screen
+                        PlannerScreen(
                             component = instance.component
                         )
                     }

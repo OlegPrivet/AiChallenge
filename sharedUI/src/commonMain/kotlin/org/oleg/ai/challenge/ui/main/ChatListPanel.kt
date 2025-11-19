@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -45,6 +46,7 @@ import org.oleg.ai.challenge.data.model.Conversation
  * @param onChatClick Callback when user selects a chat
  * @param onDeleteChat Callback when user deletes a chat
  * @param onNavigateToMcp Callback when user clicks "MCP Tools"
+ * @param onNavigateToPlanner Callback when user clicks "Planner Mode"
  * @param modifier Modifier for the panel
  */
 @Composable
@@ -55,6 +57,7 @@ fun ChatListPanel(
     onChatClick: (Long) -> Unit,
     onDeleteChat: (Long) -> Unit,
     onNavigateToMcp: () -> Unit,
+    onNavigateToPlanner: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -88,6 +91,21 @@ fun ChatListPanel(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text("MCP Tools")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // "Planner Mode" button
+        Button(
+            onClick = onNavigateToPlanner,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Default.PlayArrow,
+                contentDescription = "Planner Mode"
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Planner Mode")
         }
 
         Spacer(modifier = Modifier.height(16.dp))

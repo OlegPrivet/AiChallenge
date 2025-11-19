@@ -18,4 +18,5 @@ class PreviewMainComponent : MainComponent {
     override fun onChatCreated() = Unit
     override fun onBackFromAgentCreation() = Unit
     override fun onNavigateToMcp() = Unit
+    override fun onNavigateToPlanner() = Unit
 }

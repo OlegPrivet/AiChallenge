@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import org.oleg.ai.challenge.component.agentcreation.AgentCreationComponent
 import org.oleg.ai.challenge.component.chat.ChatComponent
+import org.oleg.ai.challenge.component.planner.PlannerComponent
 import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.Conversation
 import org.oleg.ai.challenge.data.repository.ChatRepository
@@ -31,6 +32,9 @@ private sealed class RightPaneConfig {
 
     @Serializable
     data class AgentCreationConfig(val chatId: Long) : RightPaneConfig()
+
+    @Serializable
+    data object PlannerConfig : RightPaneConfig()
 }
 
 class DefaultMainComponent(
@@ -46,6 +50,10 @@ class DefaultMainComponent(
         componentContext: ComponentContext,
         chatId: Long?,
     ) -> ChatComponent,
+    private val plannerComponentFactory: (
+        componentContext: ComponentContext,
+        onNavigateBack: () -> Unit,
+    ) -> PlannerComponent,
 ) : MainComponent, ComponentContext by componentContext {
 
     private val scope = coroutineScope(Dispatchers.Main.immediate + SupervisorJob())
@@ -83,6 +91,11 @@ class DefaultMainComponent(
                             handleBackFromAgentCreation(config.chatId)
                         }
                     )
+                )
+            }
+            is RightPaneConfig.PlannerConfig -> {
+                MainComponent.RightPaneChild.Planner(
+                    plannerComponentFactory(componentContext, ::handleBackFromPlanner)
                 )
             }
         }
@@ -148,6 +161,11 @@ class DefaultMainComponent(
         onNavigateToMcp.invoke()
     }
 
+    override fun onNavigateToPlanner() {
+        _selectedChatId.value = MainComponent.NO_SELECTION
+        slotNavigation.activate(RightPaneConfig.PlannerConfig)
+    }
+
     /**
      * Handle agents being created for the pending chat.
      */
@@ -176,6 +194,13 @@ class DefaultMainComponent(
         }
 
         // Dismiss the slot to return to empty state
+        slotNavigation.dismiss()
+    }
+
+    /**
+     * Handle navigation back from planner.
+     */
+    private fun handleBackFromPlanner() {
         slotNavigation.dismiss()
     }
 }

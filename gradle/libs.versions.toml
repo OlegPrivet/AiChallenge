@@ -21,6 +21,7 @@ ksp = "2.2.21-2.0.4"
 buildConfig = "5.7.0"
 icons = "1.7.3"
 mcp-kotlin = "0.7.7"
+meeseeks = "0.6.0-alpha02"
 
 [libraries]
 
@@ -53,6 +54,7 @@ sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sql
 icons = { module = "org.jetbrains.compose.material:material-icons-core", version.ref = "icons"}
 mcp-kotlin-client = { module = "io.modelcontextprotocol:kotlin-sdk-client", version.ref = "mcp-kotlin" }
 mcp-kotlin-core = { module = "io.modelcontextprotocol:kotlin-sdk-core", version.ref = "mcp-kotlin" }
+meeseeks = { module = "dev.mattramotar.meeseeks:runtime", version.ref = "meeseeks" }
 
 [plugins]
 
