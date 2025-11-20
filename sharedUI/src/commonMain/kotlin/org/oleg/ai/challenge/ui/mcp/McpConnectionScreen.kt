@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -24,11 +25,15 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -93,14 +98,15 @@ fun McpConnectionScreen(
     val connectionState by component.connectionState.subscribeAsState()
     val availableTools by component.availableTools.subscribeAsState()
 
+    val activeConnection = state.activeConnections.firstOrNull { it.id == state.activeConnectionId }
     val fabVisibility by remember {
         derivedStateOf {
             state.savedServers.isEmpty() || !state.showAddServerDialog
         }
     }
-    val isConnected by remember {
+    val isConnected by remember(activeConnection, connectionState) {
         derivedStateOf {
-            connectionState is McpClientService.ConnectionState.Connected
+            activeConnection != null && connectionState is McpClientService.ConnectionState.Connected
         }
     }
 
@@ -141,7 +147,12 @@ fun McpConnectionScreen(
             SavedServersPanel(
                 savedServers = state.savedServers,
                 selectedConfig = state.currentConfig,
+                activeConnections = state.activeConnections,
+                activeConnectionId = state.activeConnectionId,
                 onSelectServer = component::onSelectSavedServer,
+                onConnectServer = component::onConnectSavedServer,
+                onDisconnectServer = component::onDisconnectConnection,
+                onSelectActiveConnection = component::onSelectActiveConnection,
                 onDeleteServer = component::onDeleteServer,
                 modifier = Modifier
                     .weight(0.3f)
@@ -176,8 +187,11 @@ fun McpConnectionScreen(
                 // Connection status
                 ConnectionStatusCard(
                     connectionState = connectionState,
+                    activeConnections = state.activeConnections,
+                    activeConnectionId = state.activeConnectionId,
                     onConnect = component::onConnect,
-                    onDisconnect = component::onDisconnect,
+                    onDisconnect = component::onDisconnectConnection,
+                    onSelectConnection = component::onSelectActiveConnection,
                     isLoading = state.isLoading
                 )
 
@@ -186,6 +200,16 @@ fun McpConnectionScreen(
                 // Configuration or Tools panel
                 if (isConnected) {
                     // Show tools panel when connected
+                    if (activeConnection != null) {
+                        Text(
+                            "Operating on ${activeConnection.name}",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                     ToolsPanel(
                         availableTools = availableTools,
                         selectedTool = state.selectedTool,
@@ -229,7 +253,12 @@ fun McpConnectionScreen(
 private fun SavedServersPanel(
     savedServers: List<McpServerConfig>,
     selectedConfig: McpServerConfig,
+    activeConnections: List<McpClientService.ActiveConnection>,
+    activeConnectionId: String?,
     onSelectServer: (McpServerConfig) -> Unit,
+    onConnectServer: (McpServerConfig) -> Unit,
+    onDisconnectServer: (String) -> Unit,
+    onSelectActiveConnection: (String) -> Unit,
     onDeleteServer: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -261,10 +290,16 @@ private fun SavedServersPanel(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(savedServers, key = { it.id }) { server ->
+                    val runningConnection = activeConnections.firstOrNull { it.serverId == server.id }
                     ServerCard(
                         server = server,
                         isSelected = server.id == selectedConfig.id && selectedConfig.id > 0,
+                        isFocused = runningConnection?.id == activeConnectionId,
+                        runningConnection = runningConnection,
                         onClick = { onSelectServer(server) },
+                        onConnect = { onConnectServer(server) },
+                        onDisconnect = { runningConnection?.let { onDisconnectServer(it.id) } },
+                        onFocus = { runningConnection?.let { onSelectActiveConnection(it.id) } },
                         onDelete = { onDeleteServer(server.id) }
                     )
                 }
@@ -280,18 +315,32 @@ private fun SavedServersPanel(
 private fun ServerCard(
     server: McpServerConfig,
     isSelected: Boolean,
+    isFocused: Boolean,
+    runningConnection: McpClientService.ActiveConnection?,
     onClick: () -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onFocus: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val connectionState = runningConnection?.state ?: McpClientService.ConnectionState.Disconnected
+    val stateLabel = when (connectionState) {
+        is McpClientService.ConnectionState.Disconnected -> "Disconnected"
+        is McpClientService.ConnectionState.Connecting -> "Connecting"
+        is McpClientService.ConnectionState.Connected -> "Connected"
+        is McpClientService.ConnectionState.Error -> "Error"
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = if (isSelected)
-                MaterialTheme.colorScheme.primaryContainer
-            else
-                MaterialTheme.colorScheme.surface
+            containerColor = when {
+                isFocused -> MaterialTheme.colorScheme.primaryContainer
+                isSelected -> MaterialTheme.colorScheme.surfaceVariant
+                else -> MaterialTheme.colorScheme.surface
+            }
         )
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
@@ -300,33 +349,88 @@ private fun ServerCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    server.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
-                )
-
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(32.dp)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        "Delete",
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    StatusIndicator(connectionState)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            server.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            stateLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    IconButton(
+                        onClick = {
+                            if (runningConnection != null) onDisconnect() else onConnect()
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            if (runningConnection != null) Icons.Default.Close else Icons.Default.PlayArrow,
+                            if (runningConnection != null) "Disconnect" else "Connect",
+                            tint = if (runningConnection != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onFocus,
+                        enabled = runningConnection != null,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            "Make active",
+                            tint = if (isFocused) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Delete,
+                            "Delete",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
             Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 TransportTypeBadge(server.transportType)
                 AuthTypeBadge(server.authType)
+                if (runningConnection != null) {
+                    AssistChip(
+                        onClick = {},
+                        label = {
+                            Text(
+                                "${runningConnection.toolCount} tools",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        },
+                        modifier = Modifier.height(24.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -339,7 +443,24 @@ private fun ServerCard(
                 overflow = TextOverflow.Ellipsis
             )
 
-            if (server.isActive) {
+            if (connectionState is McpClientService.ConnectionState.Error) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    connectionState.message,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            if (isFocused) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "ACTIVE TARGET",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            } else if (server.isActive) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     "ACTIVE",
@@ -389,70 +510,169 @@ private fun AuthTypeBadge(authType: McpServerConfig.AuthType) {
 @Composable
 private fun ConnectionStatusCard(
     connectionState: McpClientService.ConnectionState,
+    activeConnections: List<McpClientService.ActiveConnection>,
+    activeConnectionId: String?,
     onConnect: () -> Unit,
-    onDisconnect: () -> Unit,
+    onDisconnect: (String) -> Unit,
+    onSelectConnection: (String) -> Unit,
     isLoading: Boolean,
 ) {
+    val activeConnection = activeConnections.firstOrNull { it.id == activeConnectionId }
+    val stateLabel = when (connectionState) {
+        is McpClientService.ConnectionState.Disconnected -> "Disconnected"
+        is McpClientService.ConnectionState.Connecting -> "Connecting..."
+        is McpClientService.ConnectionState.Connected -> "Connected"
+        is McpClientService.ConnectionState.Error -> "Error"
+    }
+
     Card(modifier = Modifier.fillMaxWidth()) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                StatusIndicator(connectionState)
-                Spacer(modifier = Modifier.width(12.dp))
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = when (connectionState) {
-                            is McpClientService.ConnectionState.Disconnected -> "Disconnected"
-                            is McpClientService.ConnectionState.Connecting -> "Connecting..."
-                            is McpClientService.ConnectionState.Connected -> "Connected"
-                            is McpClientService.ConnectionState.Error -> "Error"
-                        },
+                        "Active Connections (${activeConnections.size})",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold
                     )
-                    if (connectionState is McpClientService.ConnectionState.Connected) {
+                    Text(
+                        activeConnection?.name ?: "No active connection selected",
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        stateLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (connectionState is McpClientService.ConnectionState.Error) {
                         Text(
-                            connectionState.url,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            connectionState.message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
-            }
 
-            Button(
-                onClick = {
-                    when (connectionState) {
-                        is McpClientService.ConnectionState.Connected -> onDisconnect()
-                        else -> onConnect()
+                Column(horizontalAlignment = Alignment.End) {
+                    OutlinedButton(
+                        onClick = { activeConnection?.let { onDisconnect(it.id) } },
+                        enabled = activeConnection != null && !isLoading
+                    ) {
+                        Text("Disconnect selected")
                     }
-                },
-                enabled = !isLoading
-            ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                } else {
-                    Text(
-                        when (connectionState) {
-                            is McpClientService.ConnectionState.Connected -> "Disconnect"
-                            else -> "Connect"
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = onConnect,
+                        enabled = !isLoading
+                    ) {
+                        if (isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text("Connect current config")
                         }
-                    )
+                    }
                 }
             }
+
+            if (activeConnections.isEmpty()) {
+                Text(
+                    "No MCP clients are running. Connect or start a saved server to launch one.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(activeConnections, key = { it.id }) { connection ->
+                        ActiveConnectionChip(
+                            connection = connection,
+                            isSelected = connection.id == activeConnectionId,
+                            onSelect = { onSelectConnection(connection.id) },
+                            onDisconnect = { onDisconnect(connection.id) }
+                        )
+                    }
+                }
+
+                if (activeConnection != null) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        StatusIndicator(connectionState)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                activeConnection.url,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                "${activeConnection.toolCount} tools • ${activeConnection.resourceCount} resources",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ActiveConnectionChip(
+    connection: McpClientService.ActiveConnection,
+    isSelected: Boolean,
+    onSelect: () -> Unit,
+    onDisconnect: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AssistChip(
+            onClick = onSelect,
+            label = {
+                Text(
+                    connection.name,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            },
+            leadingIcon = { StatusIndicator(connection.state) },
+            modifier = Modifier.height(32.dp),
+            colors = AssistChipDefaults.assistChipColors(
+                containerColor = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
+            )
+        )
+        IconButton(
+            onClick = onDisconnect,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Icon(
+                Icons.Default.Close,
+                "Disconnect ${connection.name}",
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }

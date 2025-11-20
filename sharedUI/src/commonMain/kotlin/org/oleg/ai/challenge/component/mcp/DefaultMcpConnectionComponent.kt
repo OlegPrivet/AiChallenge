@@ -42,6 +42,16 @@ class DefaultMcpConnectionComponent(
                 _state.value = _state.value.copy(savedServers = servers)
             }
         }
+        scope.launch {
+            mcpClientService.activeConnections.collect { connections ->
+                _state.value = _state.value.copy(activeConnections = connections)
+            }
+        }
+        scope.launch {
+            mcpClientService.activeConnectionId.collect { activeId ->
+                _state.value = _state.value.copy(activeConnectionId = activeId)
+            }
+        }
     }
 
     // Configuration Events
@@ -110,6 +120,10 @@ class DefaultMcpConnectionComponent(
             tempAuthValue = extractAuthValue(config),
             tempApiKeyHeader = extractApiKeyHeader(config)
         )
+        val connectionId = connectionIdFor(config)
+        if (_state.value.activeConnections.any { it.id == connectionId }) {
+            onSelectActiveConnection(connectionId)
+        }
     }
 
     override fun onSaveCurrentConfiguration() {
@@ -192,7 +206,13 @@ class DefaultMcpConnectionComponent(
                 _state.value = _state.value.copy(isLoading = true, errorMessage = null)
 
                 val config = _state.value.currentConfig
-                val result = mcpClientService.connect(config.toConnectionConfig())
+                val testConnectionId = "${connectionIdFor(config)}-test"
+                val result = mcpClientService.connect(
+                    config = config.toConnectionConfig(),
+                    serverId = config.id.takeIf { it > 0 },
+                    connectionId = testConnectionId,
+                    displayName = config.name
+                )
 
                 if (result.isSuccess) {
                     logger.i { "Test connection successful" }
@@ -201,7 +221,7 @@ class DefaultMcpConnectionComponent(
                         errorMessage = null
                     )
                     // Disconnect after successful test
-                    mcpClientService.disconnect()
+                    mcpClientService.disconnect(testConnectionId)
                 } else {
                     val error = result.exceptionOrNull()?.message ?: "Unknown error"
                     logger.e { "Test connection failed: $error" }
@@ -226,14 +246,18 @@ class DefaultMcpConnectionComponent(
                 _state.value = _state.value.copy(isLoading = true, errorMessage = null)
 
                 val config = _state.value.currentConfig
-                val result = mcpClientService.connect(config.toConnectionConfig())
+                val connectionId = connectionIdFor(config)
+                val result = mcpClientService.connect(
+                    config = config.toConnectionConfig(),
+                    serverId = config.id.takeIf { it > 0 },
+                    connectionId = connectionId,
+                    displayName = config.name
+                )
 
                 if (result.isSuccess) {
                     logger.i { "Connected to MCP server: ${config.name}" }
-                    // Set as active server if it's saved
-                    if (config.id > 0) {
-                        mcpServerRepository.setActiveServer(config.id)
-                    }
+                    mcpClientService.setActiveConnection(connectionId)
+                    _state.value = _state.value.copy(activeConnectionId = connectionId)
                 } else {
                     val error = result.exceptionOrNull()?.message ?: "Unknown error"
                     logger.e { "Connection failed: $error" }
@@ -251,17 +275,72 @@ class DefaultMcpConnectionComponent(
     override fun onDisconnect() {
         scope.launch {
             try {
-                mcpClientService.disconnect()
-                mcpServerRepository.deactivateAllServers()
+                val activeId = _state.value.activeConnectionId ?: return@launch
+                mcpClientService.disconnect(activeId)
                 _state.value = _state.value.copy(
                     selectedTool = null,
                     toolInvocationResult = null
                 )
-                logger.i { "Disconnected from MCP server" }
+                logger.i { "Disconnected from MCP server $activeId" }
             } catch (e: Exception) {
                 logger.e(e) { "Disconnect error" }
             }
         }
+    }
+
+    override fun onDisconnectConnection(connectionId: String) {
+        scope.launch {
+            try {
+                mcpClientService.disconnect(connectionId)
+                if (_state.value.activeConnectionId == connectionId) {
+                    _state.value = _state.value.copy(
+                        selectedTool = null,
+                        toolInvocationResult = null
+                    )
+                }
+            } catch (e: Exception) {
+                logger.e(e) { "Disconnect error" }
+            }
+        }
+    }
+
+    override fun onConnectSavedServer(config: McpServerConfig) {
+        scope.launch {
+            try {
+                _state.value = _state.value.copy(isLoading = true, errorMessage = null)
+                val connectionId = connectionIdFor(config)
+                val result = mcpClientService.connect(
+                    config = config.toConnectionConfig(),
+                    serverId = config.id.takeIf { it > 0 },
+                    connectionId = connectionId,
+                    displayName = config.name
+                )
+
+                if (result.isSuccess) {
+                    mcpClientService.setActiveConnection(connectionId)
+                    _state.value = _state.value.copy(activeConnectionId = connectionId)
+                    logger.i { "Connected to MCP server: ${config.name}" }
+                } else {
+                    val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                    logger.e { "Connection failed: $error" }
+                    _state.value = _state.value.copy(errorMessage = "Connection failed: $error")
+                }
+            } catch (e: Exception) {
+                logger.e(e) { "Connection error" }
+                _state.value = _state.value.copy(errorMessage = "Connection error: ${e.message}")
+            } finally {
+                _state.value = _state.value.copy(isLoading = false)
+            }
+        }
+    }
+
+    override fun onSelectActiveConnection(connectionId: String) {
+        mcpClientService.setActiveConnection(connectionId)
+        _state.value = _state.value.copy(
+            activeConnectionId = connectionId,
+            selectedTool = null,
+            toolInvocationResult = null
+        )
     }
 
     // Tool Events
@@ -280,6 +359,12 @@ class DefaultMcpConnectionComponent(
 
     override fun onInvokeTool() {
         val tool = _state.value.selectedTool ?: return
+        val connectionId = _state.value.activeConnectionId ?: run {
+            _state.value = _state.value.copy(
+                errorMessage = "Select an active connection before invoking tools"
+            )
+            return
+        }
 
         scope.launch {
             try {
@@ -287,7 +372,8 @@ class DefaultMcpConnectionComponent(
 
                 val result = mcpClientService.callTool(
                     name = tool.name,
-                    arguments = _state.value.toolArguments
+                    arguments = _state.value.toolArguments,
+                    connectionId = connectionId
                 )
 
                 _state.value = if (result.isSuccess) {
@@ -315,7 +401,7 @@ class DefaultMcpConnectionComponent(
     override fun onRefreshTools() {
         scope.launch {
             try {
-                mcpClientService.listTools()
+                mcpClientService.listTools(_state.value.activeConnectionId)
             } catch (e: Exception) {
                 logger.e(e) { "Failed to refresh tools" }
             }
@@ -323,6 +409,14 @@ class DefaultMcpConnectionComponent(
     }
 
     // Private helper methods
+
+    private fun connectionIdFor(config: McpServerConfig): String {
+        return if (config.id > 0) {
+            config.id.toString()
+        } else {
+            config.serverUrl.ifBlank { config.name }
+        }
+    }
 
     private fun updateAuthHeaders() {
         val currentState = _state.value

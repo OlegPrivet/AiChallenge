@@ -116,6 +116,21 @@ interface McpConnectionComponent {
      */
     fun onDisconnect()
 
+    /**
+     * Disconnect a specific active connection.
+     */
+    fun onDisconnectConnection(connectionId: String)
+
+    /**
+     * Connect to a saved server without losing other active connections.
+     */
+    fun onConnectSavedServer(config: McpServerConfig)
+
+    /**
+     * Switch which active connection the UI is controlling.
+     */
+    fun onSelectActiveConnection(connectionId: String)
+
     // Tool Events
 
     /**
@@ -160,6 +175,10 @@ interface McpConnectionComponent {
 
         // Tool invocation result
         val toolInvocationResult: String? = null,
+
+        // Active connections
+        val activeConnections: List<McpClientService.ActiveConnection> = emptyList(),
+        val activeConnectionId: String? = null,
 
         // Loading state
         val isLoading: Boolean = false,

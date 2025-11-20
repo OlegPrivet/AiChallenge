@@ -16,6 +16,7 @@ import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
 import io.modelcontextprotocol.kotlin.sdk.client.StdioClientTransport
 import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
+import io.modelcontextprotocol.kotlin.sdk.shared.AbstractTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -27,6 +28,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
@@ -40,6 +43,7 @@ import kotlinx.serialization.json.JsonObject
  * - Resource access and reading
  * - Prompt listing and retrieval
  * - Connection state management
+ * - Multiple concurrent MCP clients with active connection selection
  * - Flexible authentication (Bearer tokens, API keys, custom headers)
  */
 class McpClientService(
@@ -47,10 +51,14 @@ class McpClientService(
 ) {
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var pingJob: Job? = null
-    private var mcpClient: Client? = null
-    private var currentHttpClient: HttpClient? = null
-    private var currentProcess: McpProcess? = null
+    private val connectionsGuard = Mutex()
+    private val connections = mutableMapOf<String, ManagedConnection>()
+
+    private val _activeConnectionId = MutableStateFlow<String?>(null)
+    val activeConnectionId: StateFlow<String?> = _activeConnectionId.asStateFlow()
+
+    private val _activeConnections = MutableStateFlow<List<ActiveConnection>>(emptyList())
+    val activeConnections: StateFlow<List<ActiveConnection>> = _activeConnections.asStateFlow()
 
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -62,6 +70,41 @@ class McpClientService(
 
     private val _availableResources = MutableStateFlow<List<String>>(emptyList())
     val availableResources: StateFlow<List<String>> = _availableResources.asStateFlow()
+
+    data class ActiveConnection(
+        val id: String,
+        val serverId: Long? = null,
+        val name: String,
+        val url: String,
+        val transportType: McpTransportType,
+        val state: ConnectionState,
+        val toolCount: Int,
+        val resourceCount: Int,
+    )
+
+    private data class ManagedConnection(
+        val id: String,
+        val serverId: Long?,
+        val name: String,
+        val config: McpConnectionConfig,
+        val client: Client,
+        var httpClient: HttpClient? = null,
+        var process: McpProcess? = null,
+        var pingJob: Job? = null,
+        val tools: MutableStateFlow<List<ToolInfo>> = MutableStateFlow(emptyList()),
+        val resources: MutableStateFlow<List<String>> = MutableStateFlow(emptyList()),
+        val state: MutableStateFlow<ConnectionState> = MutableStateFlow(ConnectionState.Disconnected),
+    )
+
+    private data class TransportContext(
+        val transport: AbstractTransport,
+        val httpClient: HttpClient? = null,
+        val process: McpProcess? = null,
+    )
+
+    private fun defaultConnectionId(config: McpConnectionConfig, serverId: Long?): String {
+        return serverId?.takeIf { it > 0 }?.toString() ?: config.serverUrl
+    }
 
     /**
      * Transport type for MCP connection
@@ -208,13 +251,18 @@ class McpClientService(
      *
      * @param config Connection configuration with transport type, auth, etc.
      */
-    suspend fun connect(config: McpConnectionConfig): Result<Unit> {
+    suspend fun connect(
+        config: McpConnectionConfig,
+        serverId: Long? = null,
+        connectionId: String = defaultConnectionId(config, serverId),
+        displayName: String? = null,
+    ): Result<Unit> {
+        val resolvedId = connectionId.ifBlank { defaultConnectionId(config, serverId) }
+        val connectionName = displayName?.ifBlank { null } ?: config.serverUrl
+
         return try {
-            _connectionState.value = ConnectionState.Connecting
+            customLogger.i { "Creating MCP client for: ${config.serverUrl} (${config.transportType}) as $resolvedId" }
 
-            customLogger.i { "Creating MCP client for: ${config.serverUrl} (${config.transportType})" }
-
-            // Create MCP client
             val client = Client(
                 clientInfo = Implementation(
                     name = config.clientName,
@@ -222,33 +270,49 @@ class McpClientService(
                 )
             )
 
-            // Create transport based on type
-            val transport = when (config.transportType) {
-                McpTransportType.SSE -> createSseTransport(config)
-                McpTransportType.HTTP -> createStreamableHttpTransport(config)
-                McpTransportType.STDIO -> createStdioTransport(config)
-            }
-
-            // Connect client to transport
-            customLogger.d { "Connecting to ${config.transportType} transport..." }
-            client.connect(transport)
-
-            mcpClient = client
-            _connectionState.value = ConnectionState.Connected(config.serverUrl, config.transportType)
-
-            // Fetch available tools and resources
-            refreshCapabilities()
-            pingJob = scope.launch {
-                while (isActive) {
-                    delay(5000)
-                    client.ping()
+            connectionsGuard.withLock {
+                connections.remove(resolvedId)?.let { cleanupConnection(it) }
+                connections[resolvedId] = ManagedConnection(
+                    id = resolvedId,
+                    serverId = serverId,
+                    name = connectionName,
+                    config = config,
+                    client = client
+                ).also { managed ->
+                    managed.state.value = ConnectionState.Connecting
                 }
             }
+            publishConnectionChanges()
+
+            val transportContext = createTransport(config)
+
+            customLogger.d { "Connecting to ${config.transportType} transport..." }
+            client.connect(transportContext.transport)
+
+            connectionsGuard.withLock {
+                connections[resolvedId]?.let { managed ->
+                    managed.httpClient = transportContext.httpClient
+                    managed.process = transportContext.process
+                    managed.state.value = ConnectionState.Connected(config.serverUrl, config.transportType)
+                    managed.pingJob = scope.launch {
+                        while (isActive) {
+                            delay(7000)
+                            managed.client.ping()
+                        }
+                    }
+                }
+            }
+
+            setActiveConnection(resolvedId)
+            refreshCapabilities(resolvedId)
 
             customLogger.i { "Successfully connected to MCP server: ${config.serverUrl}" }
             Result.success(Unit)
         } catch (e: Exception) {
-            _connectionState.value = ConnectionState.Error(e.message ?: "Unknown connection error")
+            connectionsGuard.withLock {
+                connections[resolvedId]?.state?.value = ConnectionState.Error(e.message ?: "Unknown connection error")
+            }
+            publishConnectionChanges()
             customLogger.e(e) { "Failed to connect to MCP server" }
             Result.failure(e)
         }
@@ -332,6 +396,14 @@ class McpClientService(
         )
     }
 
+    private suspend fun createTransport(config: McpConnectionConfig): TransportContext {
+        return when (config.transportType) {
+            McpTransportType.SSE -> createSseTransport(config)
+            McpTransportType.HTTP -> createStreamableHttpTransport(config)
+            McpTransportType.STDIO -> createStdioTransport(config)
+        }
+    }
+
     /**
      * Create SSE transport with configured headers and query parameters
      */
@@ -367,7 +439,6 @@ class McpClientService(
                 }
             }
         }
-        currentHttpClient = httpClient
 
         // Create SSE transport with headers
         val transport = SseClientTransport(httpClient, urlString = urlWithParams) {
@@ -381,7 +452,7 @@ class McpClientService(
             headers.append("Accept", "text/event-stream, application/json")
         }
 
-        return@run transport
+        return@run TransportContext(transport = transport, httpClient = httpClient)
     }
 
     /**
@@ -402,7 +473,7 @@ class McpClientService(
         }
 
         customLogger.d {
-            "Creating SSE transport for: $urlWithParams" +
+            "Creating StreamableHttp transport for: $urlWithParams" +
                     if (config.headers.isNotEmpty()) " with ${config.headers.size} headers" else ""
         }
 
@@ -419,7 +490,6 @@ class McpClientService(
                 }
             }
         }
-        currentHttpClient = httpClient
 
         // Create SSE transport with headers
         val transport = StreamableHttpClientTransport(httpClient, url = urlWithParams) {
@@ -433,7 +503,7 @@ class McpClientService(
             headers.append("Accept", "text/event-stream, application/json")
         }
 
-        return@run transport
+        return@run TransportContext(transport = transport, httpClient = httpClient)
     }
 
     /**
@@ -458,14 +528,14 @@ class McpClientService(
                 env = config.environmentVars
             )
 
-            // Store process reference for cleanup
-            currentProcess = process
-
             customLogger.i { "Process spawned successfully, creating StdIO transport" }
 
-            StdioClientTransport(
-                input = process.inputStream,
-                output = process.outputStream
+            TransportContext(
+                transport = StdioClientTransport(
+                    input = process.inputStream,
+                    output = process.outputStream
+                ),
+                process = process
             )
         } catch (e: Exception) {
             customLogger.e(e) { "Failed to create StdIO transport" }
@@ -476,37 +546,96 @@ class McpClientService(
     /**
      * Disconnect from the current MCP server
      */
-    suspend fun disconnect() {
-        try {
-            pingJob?.cancel()
-            customLogger.i { "Disconnecting from MCP server..." }
+    suspend fun disconnect(connectionId: String? = _activeConnectionId.value) {
+        val id = connectionId ?: return
+        val connection = connectionsGuard.withLock { connections.remove(id) } ?: return
 
-            // Destroy process if it exists (for STDIO transport)
-            currentProcess?.let { process ->
+        try {
+            connection.pingJob?.cancel()
+            customLogger.i { "Disconnecting from MCP server $id..." }
+
+            connection.process?.let { process ->
                 try {
-                    customLogger.d { "Terminating MCP process..." }
+                    customLogger.d { "Terminating MCP process for $id..." }
                     process.destroy()
-                    customLogger.i { "MCP process terminated" }
+                    customLogger.i { "MCP process for $id terminated" }
                 } catch (e: Exception) {
-                    customLogger.w(e) { "Error while terminating process" }
+                    customLogger.w(e) { "Error while terminating process for $id" }
                 }
             }
-            currentProcess = null
 
-            // Close HTTP client if it exists (for SSE transport)
-            currentHttpClient?.close()
-            currentHttpClient = null
+            connection.httpClient?.close()
+            connection.state.value = ConnectionState.Disconnected
 
-            // Clear MCP client
-            mcpClient = null
-            _connectionState.value = ConnectionState.Disconnected
-            _availableTools.value = emptyList()
-            _availableResources.value = emptyList()
+            if (_activeConnectionId.value == id) {
+                _activeConnectionId.value = connections.keys.firstOrNull()
+            }
 
-            customLogger.i { "Disconnected from MCP server" }
+            customLogger.i { "Disconnected from MCP server $id" }
         } catch (e: Exception) {
-            customLogger.e(e) { "Error during disconnect" }
+            customLogger.e(e) { "Error during disconnect for $id" }
+        } finally {
+            publishConnectionChanges()
         }
+    }
+
+    /**
+    * Disconnect all active MCP servers.
+    */
+    suspend fun disconnectAll() {
+        val ids = connectionsGuard.withLock { connections.keys.toList() }
+        ids.forEach { disconnect(it) }
+    }
+
+    private fun cleanupConnection(connection: ManagedConnection) {
+        try {
+            connection.pingJob?.cancel()
+        } catch (e: Exception) {
+            customLogger.w(e) { "Failed to cancel ping job for ${connection.id}" }
+        }
+
+        try {
+            connection.process?.destroy()
+        } catch (e: Exception) {
+            customLogger.w(e) { "Failed to destroy process for ${connection.id}" }
+        }
+
+        try {
+            connection.httpClient?.close()
+        } catch (e: Exception) {
+            customLogger.w(e) { "Failed to close HTTP client for ${connection.id}" }
+        }
+    }
+
+    fun setActiveConnection(connectionId: String?) {
+        _activeConnectionId.value = connectionId
+        publishConnectionChanges()
+    }
+
+    private fun publishConnectionChanges() {
+        val snapshots = connections.values.map { connection ->
+            ActiveConnection(
+                id = connection.id,
+                serverId = connection.serverId,
+                name = connection.name,
+                url = connection.config.serverUrl,
+                transportType = connection.config.transportType,
+                state = connection.state.value,
+                toolCount = connection.tools.value.size,
+                resourceCount = connection.resources.value.size
+            )
+        }.sortedBy { it.name.lowercase() }
+
+        _activeConnections.value = snapshots
+
+        val resolvedActiveId = _activeConnectionId.value?.takeIf { id -> connections.containsKey(id) }
+            ?: snapshots.firstOrNull()?.id
+        _activeConnectionId.value = resolvedActiveId
+
+        val activeConnection = resolvedActiveId?.let { connections[it] }
+        _connectionState.value = activeConnection?.state?.value ?: ConnectionState.Disconnected
+        _availableTools.value = activeConnection?.tools?.value ?: emptyList()
+        _availableResources.value = activeConnection?.resources?.value ?: emptyList()
     }
 
     /**
@@ -516,18 +645,33 @@ class McpClientService(
      * @param arguments Tool arguments as a map
      * @return Result containing the tool call result as text
      */
+    private fun resolveConnection(connectionId: String?): ManagedConnection? {
+        val id = connectionId ?: _activeConnectionId.value
+        if (id == null) {
+            customLogger.w { "No active MCP connection available" }
+            return null
+        }
+
+        val connection = connections[id]
+        if (connection == null) {
+            customLogger.w { "Connection $id not found" }
+        }
+        return connection
+    }
+
     suspend fun callTool(
         name: String,
         arguments: Map<String, Any> = emptyMap(),
+        connectionId: String? = _activeConnectionId.value,
     ): Result<String> {
-        val client = mcpClient
+        val connection = resolveConnection(connectionId)
             ?: return Result.failure(IllegalStateException("Not connected to MCP server"))
 
         return try {
             customLogger.d { "Calling tool: $name with args: $arguments" }
 
             // Call tool with arguments
-            val result = client.callTool(
+            val result = connection.client.callTool(
                 name = name,
                 arguments = arguments
             )
@@ -558,15 +702,18 @@ class McpClientService(
      * @param uri Resource URI
      * @return Result containing the resource content as text
      */
-    suspend fun readResource(uri: String): Result<String> {
-        val client = mcpClient
+    suspend fun readResource(
+        uri: String,
+        connectionId: String? = _activeConnectionId.value,
+    ): Result<String> {
+        val connection = resolveConnection(connectionId)
             ?: return Result.failure(IllegalStateException("Not connected to MCP server"))
 
         return try {
             customLogger.d { "Reading resource: $uri" }
 
             // Call readResource with ReadResourceRequest
-            val result = client.readResource(ReadResourceRequest(uri = uri))
+            val result = connection.client.readResource(ReadResourceRequest(uri = uri))
 
             // Extract text content from result
             val textContent = result.contents.joinToString("\n") { content ->
@@ -584,15 +731,15 @@ class McpClientService(
     /**
      * List all available tools from the connected server
      */
-    suspend fun listTools(): Result<List<ToolInfo>> {
-        val client = mcpClient
+    suspend fun listTools(connectionId: String? = _activeConnectionId.value): Result<List<ToolInfo>> {
+        val connection = resolveConnection(connectionId)
             ?: return Result.failure(IllegalStateException("Not connected to MCP server"))
 
         return try {
             customLogger.d { "Listing available tools..." }
 
             // Call listTools - returns ListToolsResult
-            val result = client.listTools()
+            val result = connection.client.listTools()
             customLogger.d { result.tools.joinToString(separator = "\n") }
 
             // Extract tool information
@@ -618,8 +765,12 @@ class McpClientService(
                 )
             }
 
-            _availableTools.value = tools
-            customLogger.i { "Found ${tools.size} tools: ${tools.map { it.name }}" }
+            connection.tools.value = tools
+            if (connection.id == _activeConnectionId.value) {
+                _availableTools.value = tools
+            }
+            publishConnectionChanges()
+            customLogger.i { "Found ${tools.size} tools on ${connection.id}: ${tools.map { it.name }}" }
             Result.success(tools)
         } catch (e: Exception) {
             customLogger.e(e) { "Failed to list tools" }
@@ -630,21 +781,25 @@ class McpClientService(
     /**
      * List all available resources from the connected server
      */
-    suspend fun listResources(): Result<List<String>> {
-        val client = mcpClient
+    suspend fun listResources(connectionId: String? = _activeConnectionId.value): Result<List<String>> {
+        val connection = resolveConnection(connectionId)
             ?: return Result.failure(IllegalStateException("Not connected to MCP server"))
 
         return try {
             customLogger.d { "Listing available resources..." }
 
             // Call listResources - returns ListResourcesResult
-            val result = client.listResources()
+            val result = connection.client.listResources()
 
             // Extract resource URIs
             val resourceUris = result.resources.map { it.uri }
 
-            _availableResources.value = resourceUris
-            customLogger.i { "Found ${resourceUris.size} resources: $resourceUris" }
+            connection.resources.value = resourceUris
+            if (connection.id == _activeConnectionId.value) {
+                _availableResources.value = resourceUris
+            }
+            publishConnectionChanges()
+            customLogger.i { "Found ${resourceUris.size} resources for ${connection.id}: $resourceUris" }
             Result.success(resourceUris)
         } catch (e: Exception) {
             customLogger.e(e) { "Failed to list resources" }
@@ -661,15 +816,16 @@ class McpClientService(
     suspend fun getPrompt(
         name: String,
         arguments: Map<String, String> = emptyMap(),
+        connectionId: String? = _activeConnectionId.value,
     ): Result<String> {
-        val client = mcpClient
+        val connection = resolveConnection(connectionId)
             ?: return Result.failure(IllegalStateException("Not connected to MCP server"))
 
         return try {
             customLogger.d { "Getting prompt: $name with args: $arguments" }
 
             // Call getPrompt with GetPromptRequest
-            val result = client.getPrompt(
+            val result = connection.client.getPrompt(
                 GetPromptRequest(name = name, arguments = arguments)
             )
 
@@ -689,15 +845,15 @@ class McpClientService(
     /**
      * List all available prompts from the connected server
      */
-    suspend fun listPrompts(): Result<List<String>> {
-        val client = mcpClient
+    suspend fun listPrompts(connectionId: String? = _activeConnectionId.value): Result<List<String>> {
+        val connection = resolveConnection(connectionId)
             ?: return Result.failure(IllegalStateException("Not connected to MCP server"))
 
         return try {
             customLogger.d { "Listing available prompts..." }
 
             // Call listPrompts - returns ListPromptsResult
-            val result = client.listPrompts()
+            val result = connection.client.listPrompts()
 
             // Extract prompt names
             val promptNames = result.prompts.map { it.name }
@@ -713,10 +869,10 @@ class McpClientService(
     /**
      * Refresh available tools and resources from the server
      */
-    private suspend fun refreshCapabilities() {
+    private suspend fun refreshCapabilities(connectionId: String? = _activeConnectionId.value) {
         try {
-            listTools()
-            listResources()
+            listTools(connectionId)
+            listResources(connectionId)
         } catch (e: Exception) {
             customLogger.w(e) { "Failed to refresh capabilities" }
         }
