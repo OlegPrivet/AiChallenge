@@ -275,7 +275,7 @@ private fun ToolSelector(
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
-                                    text = tool.description,
+                                    text = tool.description.orEmpty(),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

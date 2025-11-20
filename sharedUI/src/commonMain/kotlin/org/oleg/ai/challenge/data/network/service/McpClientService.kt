@@ -8,12 +8,14 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.plugins.sse.SSE
 import io.ktor.http.HttpMethod
 import io.ktor.http.URLBuilder
+import io.modelcontextprotocol.kotlin.sdk.EmptyJsonObject
 import io.modelcontextprotocol.kotlin.sdk.GetPromptRequest
 import io.modelcontextprotocol.kotlin.sdk.Implementation
 import io.modelcontextprotocol.kotlin.sdk.ReadResourceRequest
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
 import io.modelcontextprotocol.kotlin.sdk.client.StdioClientTransport
+import io.modelcontextprotocol.kotlin.sdk.client.StreamableHttpClientTransport
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.IO
@@ -25,6 +27,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 /**
  * MCP Client Service for connecting to and communicating with MCP servers.
@@ -53,6 +57,8 @@ class McpClientService(
 
     private val _availableTools = MutableStateFlow<List<ToolInfo>>(emptyList())
     val availableTools: StateFlow<List<ToolInfo>> = _availableTools.asStateFlow()
+    val availableToolsAsList: List<ToolInfo>?
+        get() = _availableTools.value.ifEmpty { null }
 
     private val _availableResources = MutableStateFlow<List<String>>(emptyList())
     val availableResources: StateFlow<List<String>> = _availableResources.asStateFlow()
@@ -64,8 +70,11 @@ class McpClientService(
         /** Server-Sent Events over HTTP - for remote servers */
         SSE,
 
+        /** Server-Sent Events over HTTP - for remote servers */
+        HTTP,
+
         /** Standard Input/Output - for local process communication */
-        STDIO
+        STDIO,
     }
 
     /**
@@ -216,6 +225,7 @@ class McpClientService(
             // Create transport based on type
             val transport = when (config.transportType) {
                 McpTransportType.SSE -> createSseTransport(config)
+                McpTransportType.HTTP -> createStreamableHttpTransport(config)
                 McpTransportType.STDIO -> createStdioTransport(config)
             }
 
@@ -361,6 +371,58 @@ class McpClientService(
 
         // Create SSE transport with headers
         val transport = SseClientTransport(httpClient, urlString = urlWithParams) {
+            // Add all configured headers
+            method = HttpMethod.Get
+            config.headers.forEach { (key, value) ->
+                headers.append(key, value)
+            }
+            headers.append("Content-Type", "application/json")
+            headers.append("User-Agent", "MCP-Client/1.0")
+            headers.append("Accept", "text/event-stream, application/json")
+        }
+
+        return@run transport
+    }
+
+    /**
+     * Create StreamableHttp transport with configured headers and query parameters
+     */
+    private suspend fun createStreamableHttpTransport(config: McpConnectionConfig) = run {
+        // Build URL with query parameters if provided
+        val urlWithParams = if (config.queryParams.isNotEmpty()) {
+            URLBuilder(config.serverUrl).apply {
+                parameters.apply {
+                    config.queryParams.forEach { (key, value) ->
+                        append(key, value)
+                    }
+                }
+            }.buildString()
+        } else {
+            config.serverUrl
+        }
+
+        customLogger.d {
+            "Creating SSE transport for: $urlWithParams" +
+                    if (config.headers.isNotEmpty()) " with ${config.headers.size} headers" else ""
+        }
+
+        // Create HTTP client with SSE support
+        val httpClient = HttpClient {
+            install(SSE)
+            install(Logging) {
+                logger = io.ktor.client.plugins.logging.Logger.DEFAULT
+                level = LogLevel.ALL
+                logger = object : io.ktor.client.plugins.logging.Logger {
+                    override fun log(message: String) {
+                        customLogger.d(message)
+                    }
+                }
+            }
+        }
+        currentHttpClient = httpClient
+
+        // Create SSE transport with headers
+        val transport = StreamableHttpClientTransport(httpClient, url = urlWithParams) {
             // Add all configured headers
             method = HttpMethod.Get
             config.headers.forEach { (key, value) ->
@@ -531,15 +593,28 @@ class McpClientService(
 
             // Call listTools - returns ListToolsResult
             val result = client.listTools()
-            customLogger.d { result.tools.joinToString(separator = "\n")}
+            customLogger.d { result.tools.joinToString(separator = "\n") }
 
             // Extract tool information
             val tools = result.tools.map { tool ->
                 ToolInfo(
                     name = tool.name,
-                    title = tool.title ?: "No title",
-                    description = tool.description ?: "No description",
-                    inputSchema = tool.inputSchema.properties.toString()
+                    title = tool.title,
+                    description = tool.description,
+                    parameters = Input(tool.inputSchema.properties, tool.inputSchema.required),
+                    outputSchema = Output(
+                        tool.outputSchema?.properties ?: EmptyJsonObject,
+                        tool.outputSchema?.required
+                    ),
+                    annotations = ToolAnnotations(
+                        title = tool.annotations?.title,
+                        readOnlyHint = tool.annotations?.readOnlyHint,
+                        destructiveHint = tool.annotations?.destructiveHint,
+                        idempotentHint = tool.annotations?.idempotentHint,
+                        openWorldHint = tool.annotations?.openWorldHint
+                    ),
+                    _meta = tool._meta
+
                 )
             }
 
@@ -657,13 +732,37 @@ class McpClientService(
         data class Error(val message: String) : ConnectionState()
     }
 
-    /**
-     * Tool information data class
-     */
+    @Serializable
     data class ToolInfo(
         val name: String,
-        val title: String,
-        val description: String,
-        val inputSchema: String,
+        val title: String?,
+        val description: String?,
+        val parameters: Input,
+        val outputSchema: Output?,
+        val annotations: ToolAnnotations?,
+        val _meta: JsonObject = EmptyJsonObject,
+    )
+
+    @Serializable
+    data class Input(
+        val properties: JsonObject = EmptyJsonObject,
+        val required: List<String>? = null,
+        val type: String = "object",
+    )
+
+    @Serializable
+    data class Output(
+        val properties: JsonObject = EmptyJsonObject,
+        val required: List<String>? = null,
+        val type: String = "object",
+    )
+
+    @Serializable
+    data class ToolAnnotations(
+        val title: String?,
+        val readOnlyHint: Boolean? = false,
+        val destructiveHint: Boolean? = true,
+        val idempotentHint: Boolean? = false,
+        val openWorldHint: Boolean? = true,
     )
 }

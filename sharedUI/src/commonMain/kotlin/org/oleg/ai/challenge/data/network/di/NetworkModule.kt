@@ -30,6 +30,7 @@ val networkModule: Module = module {
     single<ChatApiService> {
         ChatApiServiceImpl(
             httpClient = get(),
+            mcpClientService = get(),
             logger = Logger.withTag("ChatApiService")
         )
     }

@@ -44,8 +44,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -87,7 +87,7 @@ import org.oleg.ai.challenge.data.network.service.McpClientService
 fun McpConnectionScreen(
     component: McpConnectionComponent,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     val state by component.state.subscribeAsState()
     val connectionState by component.connectionState.subscribeAsState()
@@ -231,7 +231,7 @@ private fun SavedServersPanel(
     selectedConfig: McpServerConfig,
     onSelectServer: (McpServerConfig) -> Unit,
     onDeleteServer: (Long) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
         Text(
@@ -281,7 +281,7 @@ private fun ServerCard(
     server: McpServerConfig,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -391,7 +391,7 @@ private fun ConnectionStatusCard(
     connectionState: McpClientService.ConnectionState,
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
-    isLoading: Boolean
+    isLoading: Boolean,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -496,7 +496,7 @@ private fun ServerConfigurationPanel(
     onSaveConfiguration: () -> Unit,
     onTestConnection: () -> Unit,
     isLoading: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     LazyColumn(
         modifier = modifier,
@@ -525,13 +525,24 @@ private fun ServerConfigurationPanel(
         item {
             Text("Transport Type", style = MaterialTheme.typography.labelMedium)
             Spacer(modifier = Modifier.height(4.dp))
-            TabRow(
-                selectedTabIndex = if (config.transportType == McpClientService.McpTransportType.SSE) 0 else 1
+            val selectedTabIndex = when (config.transportType) {
+                McpClientService.McpTransportType.SSE -> 0
+                McpClientService.McpTransportType.HTTP -> 1
+                McpClientService.McpTransportType.STDIO -> 2
+            }
+            SecondaryTabRow(
+                selectedTabIndex = selectedTabIndex,
+                modifier = Modifier,
             ) {
                 Tab(
                     selected = config.transportType == McpClientService.McpTransportType.SSE,
                     onClick = { onTransportTypeChanged(McpClientService.McpTransportType.SSE) },
                     text = { Text("SSE") }
+                )
+                Tab(
+                    selected = config.transportType == McpClientService.McpTransportType.HTTP,
+                    onClick = { onTransportTypeChanged(McpClientService.McpTransportType.HTTP) },
+                    text = { Text("HTTP") }
                 )
                 Tab(
                     selected = config.transportType == McpClientService.McpTransportType.STDIO,
@@ -540,99 +551,126 @@ private fun ServerConfigurationPanel(
                 )
             }
         }
-
-        if (config.transportType == McpClientService.McpTransportType.SSE) {
-            // SSE Configuration
-            item {
-                OutlinedTextField(
-                    value = config.serverUrl,
-                    onValueChange = onServerUrlChanged,
-                    label = { Text("Server URL") },
-                    placeholder = { Text("https://example.com/sse") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
-            }
-
-            item {
-                AuthTypeSelector(
-                    selectedAuthType = config.authType,
-                    onAuthTypeChanged = onAuthTypeChanged,
-                    tempAuthValue = tempAuthValue,
-                    tempApiKeyHeader = tempApiKeyHeader,
-                    authHeaders = config.authHeaders,
-                    onAuthValueChanged = onAuthValueChanged,
-                    onApiKeyHeaderChanged = onApiKeyHeaderChanged,
-                    onCustomHeadersChanged = onCustomHeadersChanged
-                )
-            }
-        } else {
-            // STDIO Configuration
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+        when (config.transportType) {
+            McpClientService.McpTransportType.SSE -> {
+                item {
+                    OutlinedTextField(
+                        value = config.serverUrl,
+                        onValueChange = onServerUrlChanged,
+                        label = { Text("Server URL") },
+                        placeholder = { Text("https://example.com/sse") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
                     )
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "Info",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "STDIO Server Configuration Examples",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "• Java JAR: Command = java, Args = -jar /path/to/server.jar",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = "• Node.js: Command = node, Args = /path/to/server.js",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = "• Python: Command = python3, Args = /path/to/server.py",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
+                }
+
+                item {
+                    AuthTypeSelector(
+                        selectedAuthType = config.authType,
+                        onAuthTypeChanged = onAuthTypeChanged,
+                        tempAuthValue = tempAuthValue,
+                        tempApiKeyHeader = tempApiKeyHeader,
+                        authHeaders = config.authHeaders,
+                        onAuthValueChanged = onAuthValueChanged,
+                        onApiKeyHeaderChanged = onApiKeyHeaderChanged,
+                        onCustomHeadersChanged = onCustomHeadersChanged
+                    )
                 }
             }
 
-            item {
-                OutlinedTextField(
-                    value = config.serverUrl,
-                    onValueChange = onServerUrlChanged,
-                    label = { Text("Command") },
-                    placeholder = { Text("java, node, python3, etc.") },
-                    supportingText = { Text("Executable command (e.g., 'java' for JAR files, 'node' for Node.js)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+            McpClientService.McpTransportType.HTTP -> {
+                item {
+                    OutlinedTextField(
+                        value = config.serverUrl,
+                        onValueChange = onServerUrlChanged,
+                        label = { Text("Server URL") },
+                        placeholder = { Text("https://example.com/mcp") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                item {
+                    AuthTypeSelector(
+                        selectedAuthType = config.authType,
+                        onAuthTypeChanged = onAuthTypeChanged,
+                        tempAuthValue = tempAuthValue,
+                        tempApiKeyHeader = tempApiKeyHeader,
+                        authHeaders = config.authHeaders,
+                        onAuthValueChanged = onAuthValueChanged,
+                        onApiKeyHeaderChanged = onApiKeyHeaderChanged,
+                        onCustomHeadersChanged = onCustomHeadersChanged
+                    )
+                }
             }
 
-            item {
-                CommandArgsEditor(
-                    args = config.commandArgs,
-                    onArgsChanged = onCommandArgsChanged
-                )
-            }
+            McpClientService.McpTransportType.STDIO -> {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Info",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "STDIO Server Configuration Examples",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = "• Java JAR: Command = java, Args = -jar /path/to/server.jar",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = "• Node.js: Command = node, Args = /path/to/server.js",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                                Text(
+                                    text = "• Python: Command = python3, Args = /path/to/server.py",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
 
-            item {
-                EnvironmentVarsEditor(
-                    vars = config.environmentVars,
-                    onVarsChanged = onEnvironmentVarsChanged
-                )
+                item {
+                    OutlinedTextField(
+                        value = config.serverUrl,
+                        onValueChange = onServerUrlChanged,
+                        label = { Text("Command") },
+                        placeholder = { Text("java, node, python3, etc.") },
+                        supportingText = { Text("Executable command (e.g., 'java' for JAR files, 'node' for Node.js)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+
+                item {
+                    CommandArgsEditor(
+                        args = config.commandArgs,
+                        onArgsChanged = onCommandArgsChanged
+                    )
+                }
+
+                item {
+                    EnvironmentVarsEditor(
+                        vars = config.environmentVars,
+                        onVarsChanged = onEnvironmentVarsChanged
+                    )
+                }
             }
         }
 
@@ -674,7 +712,7 @@ private fun AuthTypeSelector(
     authHeaders: Map<String, String>,
     onAuthValueChanged: (String) -> Unit,
     onApiKeyHeaderChanged: (String) -> Unit,
-    onCustomHeadersChanged: (Map<String, String>) -> Unit
+    onCustomHeadersChanged: (Map<String, String>) -> Unit,
 ) {
     Column {
         var expanded by remember { mutableStateOf(false) }
@@ -740,6 +778,7 @@ private fun AuthTypeSelector(
                     singleLine = true
                 )
             }
+
             McpServerConfig.AuthType.API_KEY -> {
                 OutlinedTextField(
                     value = tempApiKeyHeader,
@@ -759,12 +798,14 @@ private fun AuthTypeSelector(
                     singleLine = true
                 )
             }
+
             McpServerConfig.AuthType.CUSTOM_HEADERS -> {
                 CustomHeadersEditor(
                     headers = authHeaders,
                     onHeadersChanged = onCustomHeadersChanged
                 )
             }
+
             McpServerConfig.AuthType.NONE -> {
                 // No additional fields
             }
@@ -778,7 +819,7 @@ private fun AuthTypeSelector(
 @Composable
 private fun CustomHeadersEditor(
     headers: Map<String, String>,
-    onHeadersChanged: (Map<String, String>) -> Unit
+    onHeadersChanged: (Map<String, String>) -> Unit,
 ) {
     var headersList by remember(headers) {
         mutableStateOf(headers.toList())
@@ -849,7 +890,7 @@ private fun CustomHeadersEditor(
 @Composable
 private fun CommandArgsEditor(
     args: List<String>,
-    onArgsChanged: (List<String>) -> Unit
+    onArgsChanged: (List<String>) -> Unit,
 ) {
     var argsText by remember(args) {
         mutableStateOf(args.joinToString(" "))
@@ -875,7 +916,7 @@ private fun CommandArgsEditor(
 @Composable
 private fun EnvironmentVarsEditor(
     vars: Map<String, String>,
-    onVarsChanged: (Map<String, String>) -> Unit
+    onVarsChanged: (Map<String, String>) -> Unit,
 ) {
     var varsList by remember(vars) {
         mutableStateOf(vars.toList())
@@ -952,7 +993,7 @@ private fun ToolsPanel(
     onInvokeTool: () -> Unit,
     onToolArgumentsChanged: (Map<String, Any>) -> Unit,
     isLoading: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
         Text(
@@ -1012,7 +1053,7 @@ private fun ToolsPanel(
 @Composable
 private fun ToolCard(
     tool: McpClientService.ToolInfo,
-    onClick: () -> Unit
+    onClick: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -1025,14 +1066,6 @@ private fun ToolCard(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                tool.title,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -1055,9 +1088,11 @@ fun jsonElementToAny(element: JsonElement): Any {
                 else -> element.content
             }
         }
+
         is JsonObject -> {
             element.mapValues { (_, value) -> jsonElementToAny(value) }
         }
+
         is JsonArray -> {
             element.map { jsonElementToAny(it) }
         }
@@ -1074,7 +1109,7 @@ private fun ToolInvocationDialog(
     onDismiss: () -> Unit,
     onInvoke: () -> Unit,
     onArgumentsChanged: (Map<String, Any>) -> Unit,
-    isLoading: Boolean
+    isLoading: Boolean,
 ) {
     var argsJson by remember { mutableStateOf("") }
 
@@ -1083,14 +1118,6 @@ private fun ToolInvocationDialog(
         title = { Text("Invoke Tool: ${tool.name}") },
         text = {
             Column {
-                Text(
-                    tool.title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
                 OutlinedTextField(
                     value = argsJson,
                     onValueChange = { newValue ->
@@ -1112,7 +1139,7 @@ private fun ToolInvocationDialog(
                         }
                     },
                     label = { Text("Arguments (JSON)") },
-                    placeholder = { Text("{\"state\": \"value\"}") },
+                    placeholder = { Text(tool.parameters.properties.toString()) },
                     modifier = Modifier.fillMaxWidth(),
                 )
 

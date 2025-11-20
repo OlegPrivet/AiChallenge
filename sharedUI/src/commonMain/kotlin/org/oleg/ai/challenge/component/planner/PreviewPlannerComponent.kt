@@ -2,6 +2,7 @@ package org.oleg.ai.challenge.component.planner
 
 import com.arkivanov.decompose.value.MutableValue
 import com.arkivanov.decompose.value.Value
+import io.modelcontextprotocol.kotlin.sdk.EmptyJsonObject
 import org.oleg.ai.challenge.data.model.ChatMessage
 import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.model.PlannerFrequency
@@ -39,15 +40,22 @@ class PreviewPlannerComponent : PlannerComponent {
         listOf(
             McpClientService.ToolInfo(
                 name = "get_weather",
-                title = "Get Weather",
                 description = "Get current weather for a location",
-                inputSchema = """{"location": "string"}"""
+                parameters = McpClientService.Input(),
+                title = "luptatum",
+                outputSchema = null,
+                annotations = null,
+                _meta = EmptyJsonObject,
+
             ),
             McpClientService.ToolInfo(
                 name = "search_web",
-                title = "Search Web",
                 description = "Search the web for information",
-                inputSchema = """{"query": "string"}"""
+                parameters = McpClientService.Input(),
+                title = "reque",
+                outputSchema = null,
+                annotations = null,
+                _meta = EmptyJsonObject,
             )
         )
     )

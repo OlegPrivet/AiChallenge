@@ -117,7 +117,7 @@ class ToolValidationService(
         }
 
         // Validate arguments against tool schema
-        val schemaValidation = validateAgainstSchema(arguments, tool.inputSchema)
+        val schemaValidation = validateAgainstSchema(arguments, tool.parameters)
         if (schemaValidation != null) {
             logger.w { "Schema validation failed: $schemaValidation" }
             return ValidationResult.Invalid(schemaValidation)
@@ -210,7 +210,7 @@ class ToolValidationService(
      */
     private fun validateAgainstSchema(
         arguments: Map<String, Any>,
-        inputSchema: String
+        inputSchema: McpClientService.Input
     ): String? {
         // Parse the schema to extract required properties
         // The inputSchema is typically a JSON string like: {property1={type=string}, property2={type=number}}
@@ -249,14 +249,14 @@ class ToolValidationService(
     fun createValidationErrorPrompt(
         validationError: String,
         toolName: String,
-        inputSchema: String
+        inputSchema: McpClientService.Input?
     ): String {
         return """
             |Формат ответа не соответствует входному параметру MCP сервера.
             |
             |Ошибка: $validationError
             |
-            |Для инструмента '$toolName' ожидается следующий формат: '$inputSchema'
+            |Для инструмента '$toolName' ожидается следующий формат: '${inputSchema?.properties} ${inputSchema?.required}'
             |Пожалуйста, исправьте формат ответа.
         """.trimMargin()
     }

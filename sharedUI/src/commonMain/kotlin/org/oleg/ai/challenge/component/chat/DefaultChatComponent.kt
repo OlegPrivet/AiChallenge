@@ -22,7 +22,7 @@ import org.oleg.ai.challenge.data.network.service.ChatApiService
 import org.oleg.ai.challenge.data.network.service.ChatOrchestratorService
 import org.oleg.ai.challenge.data.network.service.McpClientService
 import org.oleg.ai.challenge.data.repository.ChatRepository
-import kotlin.time.Clock
+import kotlin.time.Clock.System
 import kotlin.time.ExperimentalTime
 
 class DefaultChatComponent(
@@ -103,10 +103,33 @@ class DefaultChatComponent(
     /**
      * Injects system prompts for available MCP tools into the message history.
      */
+    @OptIn(ExperimentalTime::class)
     private suspend fun injectToolSystemPrompts(tools: List<McpClientService.ToolInfo>) {
         // Remove existing tool prompts
         allMessages.removeAll { it.isMcpSystemPrompt }
 
+        allMessages.add(0, ChatMessage(
+            id = "${System.now()}_tool_system",
+            text = """
+        Ты агент, который умеет формировать запросы по описанию инструментов MCP сервера и запрашивать работу конкретного MCP сервера
+        Если в тексте пользователя есть информация, которая подходит под описание инструмента MCP сервера, тебе нужно вернуть в ответе ТОЛЬКО объект с данными, согласно описанию инструмента
+        Если в новых сообщениях пользователя есть информация, которая подходит под описание инструмента MCP сервера, то нужно вернуть в ответе ТОЛЬКО объект с данными, согласно описанию инструмента
+        Если пользоваетль в последнем сообщении просит сформулировать ответ, то выдай итоговый ответ
+        
+    """.trimIndent(),
+            isFromUser = false,
+            timestamp = 0,
+            role = MessageRole.SYSTEM,
+            isVisibleInUI = false,
+            agentName = "",
+            agentId = "",
+            modelUsed = "",
+            usage = null,
+            mcpName = "",
+            isMcpSystemPrompt = true,
+            isMcpIntermediate = false
+
+        ))
         // Create and add new tool prompts (no agentId - they're global)
         val toolPrompts = chatOrchestratorService.createToolSystemPrompts(
             enabledTools = tools,
@@ -336,7 +359,7 @@ class DefaultChatComponent(
                     conversationHistory = messagesToSend,
                     model = currentAgent.model,
                     temperature = currentAgent.temperature,
-                    toolName = "get_messages",
+                    toolName = "",
                 )
 
                 when (result) {
@@ -547,5 +570,5 @@ class DefaultChatComponent(
 
     @OptIn(ExperimentalTime::class)
     private fun generateId(): String =
-        "${Clock.System.now()}_${(0..1000).random()}_${(0..500).random()}"
+        "${System.now()}_${(0..1000).random()}_${(0..500).random()}"
 }

@@ -1,9 +1,11 @@
 package org.oleg.ai.challenge.data.network.service
 
 import co.touchlab.kermit.Logger
+import io.modelcontextprotocol.kotlin.sdk.EmptyJsonObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import org.oleg.ai.challenge.data.model.ChatMessage
 import org.oleg.ai.challenge.data.model.McpProcessingPhase
@@ -12,6 +14,7 @@ import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
 import org.oleg.ai.challenge.data.network.json
+import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.ui.mcp.jsonElementToAny
 import org.oleg.ai.challenge.data.network.model.ChatMessage as ApiChatMessage
 import org.oleg.ai.challenge.data.network.model.MessageRole as ApiMessageRole
@@ -35,7 +38,7 @@ class ChatOrchestratorService(
     private val chatApiService: ChatApiService,
     private val mcpClientService: McpClientService,
     private val toolValidationService: ToolValidationService,
-    private val logger: Logger = Logger.withTag("ChatOrchestratorService")
+    private val logger: Logger = Logger.withTag("ChatOrchestratorService"),
 ) {
     private val _mcpUiState = MutableStateFlow(McpUiState())
     val mcpUiState: StateFlow<McpUiState> = _mcpUiState.asStateFlow()
@@ -50,7 +53,7 @@ class ChatOrchestratorService(
         data class Success(
             val finalResponse: String,
             val model: String,
-            val usage: org.oleg.ai.challenge.data.network.model.Usage?
+            val usage: Usage?,
         ) : OrchestratorResult()
 
         /**
@@ -104,21 +107,16 @@ class ChatOrchestratorService(
         // Step 2: Validate response against tool schemas
 //        val validationResult = toolValidationService.validateResponse(draftResponse, availableTools)
 
-        val jsonObject = json.parseToJsonElement(draftResponse) as? JsonObject
-        val args = if (jsonObject != null) {
-            val parsedMap = jsonObject.mapValues { (_, value) ->
-                jsonElementToAny(value)
-            }
-            parsedMap
-        } else {
-            // Not a JSON object, reset to empty map
-            emptyMap()
+        val toolRequest: ToolRequest = try {
+            json.decodeFromString(draftResponse)
+        } catch (e: Exception) {
+            ToolRequest(name = "empty", arguments = EmptyJsonObject)
         }
         logger.i { "Valid tool call for 'get_messages'" }
         return processMcpToolCall(
             apiMessages = apiMessages,
-            toolName = toolName,
-            arguments = args,
+            toolName = toolRequest.name,
+            arguments = toolRequest.getArgs(),
             model = model,
             temperature = temperature
         )
@@ -169,6 +167,23 @@ class ChatOrchestratorService(
 //        }
     }
 
+    @Serializable
+    data class ToolRequest(
+        val name: String,
+        val arguments: JsonObject,
+    ) {
+
+        fun getArgs(): Map<String, Any> {
+            return try {
+                arguments.mapValues { (_, value) ->
+                    jsonElementToAny(value)
+                }
+            } catch (e: Exception) {
+                emptyMap()
+            }
+        }
+    }
+
     /**
      * Handles validation failure with retry logic.
      */
@@ -178,7 +193,7 @@ class ChatOrchestratorService(
         error: String,
         tool: McpClientService.ToolInfo?,
         model: String,
-        temperature: Float
+        temperature: Float,
     ): OrchestratorResult {
         val currentRetryCount = _mcpUiState.value.retryCount
 
@@ -213,7 +228,7 @@ class ChatOrchestratorService(
         val errorPrompt = toolValidationService.createValidationErrorPrompt(
             validationError = error,
             toolName = tool?.name ?: "unknown",
-            inputSchema = tool?.inputSchema ?: "{}"
+            inputSchema = tool?.parameters
         )
 
         // Add error prompt as user message
@@ -278,7 +293,7 @@ class ChatOrchestratorService(
         toolName: String,
         arguments: Map<String, Any>,
         model: String,
-        temperature: Float
+        temperature: Float,
     ): OrchestratorResult {
         logger.d { "Invoking MCP tool: $toolName with ${arguments.size} arguments" }
 
@@ -330,7 +345,7 @@ class ChatOrchestratorService(
     private suspend fun sendToAiDirect(
         messages: List<ApiChatMessage>,
         model: String,
-        temperature: Float
+        temperature: Float,
     ): OrchestratorResult {
         return sendToAi(messages, model, temperature)
     }
@@ -341,7 +356,7 @@ class ChatOrchestratorService(
     private suspend fun sendToAi(
         messages: List<ApiChatMessage>,
         model: String,
-        temperature: Float
+        temperature: Float,
     ): OrchestratorResult {
         val request = createConversationRequest(
             messages = messages,
@@ -377,7 +392,7 @@ class ChatOrchestratorService(
         phase: McpProcessingPhase,
         currentToolName: String? = null,
         validationError: String? = null,
-        retryCount: Int? = null
+        retryCount: Int? = null,
     ) {
         _mcpUiState.value = _mcpUiState.value.copy(
             isMcpRunning = isMcpRunning,
@@ -420,7 +435,7 @@ class ChatOrchestratorService(
      */
     fun createToolSystemPrompts(
         enabledTools: List<McpClientService.ToolInfo>,
-        agentId: String? = null
+        agentId: String? = null,
     ): List<ChatMessage> {
         var index = 0
         return enabledTools.map { tool ->
@@ -428,7 +443,7 @@ class ChatOrchestratorService(
             ChatMessage.toolSystemPrompt(
                 index = index,
                 toolName = tool.name,
-                description = tool.description + "IF YOU CHOOSE ME, RETURN ONLY IN THE FORM OF A JSON OBJECT ${tool.inputSchema} WITH VALID DATA!!!!\n",
+                description = tool.description + "IF YOU CHOOSE ME, RETURN ONLY IN THE FORM OF A JSON OBJECT WITH TOOL NAME AND ARGUMENTS {\"name\":\"${tool.name}\",\"arguments\":${tool.parameters.properties}} WITH VALID DATA!!!!\n",
                 agentId = agentId
             )
         }
@@ -443,7 +458,7 @@ class ChatOrchestratorService(
      */
     fun removeToolSystemPrompts(
         messages: List<ChatMessage>,
-        toolName: String
+        toolName: String,
     ): List<ChatMessage> {
         return messages.filter { message ->
             !(message.isMcpSystemPrompt && message.mcpName == toolName)
