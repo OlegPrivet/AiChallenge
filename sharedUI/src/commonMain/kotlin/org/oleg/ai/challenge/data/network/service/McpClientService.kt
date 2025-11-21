@@ -634,7 +634,7 @@ class McpClientService(
 
         val activeConnection = resolvedActiveId?.let { connections[it] }
         _connectionState.value = activeConnection?.state?.value ?: ConnectionState.Disconnected
-        _availableTools.value = activeConnection?.tools?.value ?: emptyList()
+        _availableTools.value = connections.values.flatMap { it.tools.value }
         _availableResources.value = activeConnection?.resources?.value ?: emptyList()
     }
 
@@ -646,17 +646,26 @@ class McpClientService(
      * @return Result containing the tool call result as text
      */
     private fun resolveConnection(connectionId: String?): ManagedConnection? {
-        val id = connectionId ?: _activeConnectionId.value
-        if (id == null) {
+        val targetId = connectionId ?: findConnectionIdForTool(null)
+        return targetId?.let { id ->
+            val connection = connections[id]
+            if (connection == null) {
+                customLogger.w { "Connection $id not found" }
+            }
+            connection
+        } ?: run {
             customLogger.w { "No active MCP connection available" }
-            return null
+            null
         }
+    }
 
-        val connection = connections[id]
-        if (connection == null) {
-            customLogger.w { "Connection $id not found" }
+    private fun findConnectionIdForTool(toolName: String?): String? {
+        if (toolName == null) {
+            return _activeConnectionId.value ?: connections.keys.firstOrNull()
         }
-        return connection
+        return connections.values.firstOrNull { managed ->
+            managed.tools.value.any { it.name == toolName }
+        }?.id ?: _activeConnectionId.value ?: connections.keys.firstOrNull()
     }
 
     suspend fun callTool(
@@ -664,7 +673,7 @@ class McpClientService(
         arguments: Map<String, Any> = emptyMap(),
         connectionId: String? = _activeConnectionId.value,
     ): Result<String> {
-        val connection = resolveConnection(connectionId)
+        val connection = resolveConnection(connectionId ?: findConnectionIdForTool(name))
             ?: return Result.failure(IllegalStateException("Not connected to MCP server"))
 
         return try {
@@ -760,15 +769,13 @@ class McpClientService(
                         idempotentHint = tool.annotations?.idempotentHint,
                         openWorldHint = tool.annotations?.openWorldHint
                     ),
-                    _meta = tool._meta
-
+                    _meta = tool._meta,
+                    connectionId = connection.id,
+                    connectionName = connection.name
                 )
             }
 
             connection.tools.value = tools
-            if (connection.id == _activeConnectionId.value) {
-                _availableTools.value = tools
-            }
             publishConnectionChanges()
             customLogger.i { "Found ${tools.size} tools on ${connection.id}: ${tools.map { it.name }}" }
             Result.success(tools)
@@ -897,6 +904,8 @@ class McpClientService(
         val outputSchema: Output?,
         val annotations: ToolAnnotations?,
         val _meta: JsonObject = EmptyJsonObject,
+        val connectionId: String? = null,
+        val connectionName: String? = null,
     )
 
     @Serializable

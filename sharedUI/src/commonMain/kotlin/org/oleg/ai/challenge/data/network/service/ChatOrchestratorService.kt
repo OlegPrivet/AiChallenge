@@ -1,7 +1,6 @@
 package org.oleg.ai.challenge.data.network.service
 
 import co.touchlab.kermit.Logger
-import io.modelcontextprotocol.kotlin.sdk.EmptyJsonObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,7 +12,6 @@ import org.oleg.ai.challenge.data.model.McpUiState
 import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
-import org.oleg.ai.challenge.data.network.json
 import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.ui.mcp.jsonElementToAny
 import org.oleg.ai.challenge.data.network.model.ChatMessage as ApiChatMessage
@@ -96,30 +94,30 @@ class ChatOrchestratorService(
             phase = McpProcessingPhase.Validating
         )
 
-        val initialResponse = sendToAi(apiMessages, model, temperature)
-        if (initialResponse is OrchestratorResult.Error) {
-            resetMcpState()
-            return initialResponse
-        }
-
-        val draftResponse = (initialResponse as OrchestratorResult.Success).finalResponse
-
-        // Step 2: Validate response against tool schemas
-//        val validationResult = toolValidationService.validateResponse(draftResponse, availableTools)
-
-        val toolRequest: ToolRequest = try {
-            json.decodeFromString(draftResponse)
-        } catch (e: Exception) {
-            ToolRequest(name = "empty", arguments = EmptyJsonObject)
-        }
-        logger.i { "Valid tool call for 'get_messages'" }
-        return processMcpToolCall(
-            apiMessages = apiMessages,
-            toolName = toolRequest.name,
-            arguments = toolRequest.getArgs(),
-            model = model,
-            temperature = temperature
-        )
+        return sendToAi(apiMessages, model, temperature)
+//        if (initialResponse is OrchestratorResult.Error) {
+//            resetMcpState()
+//            return initialResponse
+//        }
+//
+//        val draftResponse = (initialResponse as OrchestratorResult.Success).finalResponse
+//
+//        // Step 2: Validate response against tool schemas
+////        val validationResult = toolValidationService.validateResponse(draftResponse, availableTools)
+//
+//        val toolRequest: ToolRequest = try {
+//            json.decodeFromString(draftResponse)
+//        } catch (e: Exception) {
+//            ToolRequest(name = "empty", arguments = EmptyJsonObject)
+//        }
+//        logger.i { "Valid tool call for 'get_messages'" }
+//        return processMcpToolCall(
+//            apiMessages = apiMessages,
+//            toolName = toolRequest.name,
+//            arguments = toolRequest.getArgs(),
+//            model = model,
+//            temperature = temperature
+//        )
 
 
 //        when (validationResult) {
@@ -325,12 +323,12 @@ class ChatOrchestratorService(
         )
 
         // Send MCP response to AI for final answer (silently, not shown in UI)
-        apiMessages.add(
-            ApiChatMessage(
-                role = ApiMessageRole.USER,
-                content = "Ответ MCP инструмента '$toolName':\n$mcpResponse\n\nСформулируй окончательный ответ пользователю на основе запроса пользователя и этих данных."
-            )
-        )
+//        apiMessages.add(
+//            ApiChatMessage(
+//                role = ApiMessageRole.USER,
+//                content = "Ответ MCP инструмента '$toolName':\n$mcpResponse\n\nСформулируй окончательный ответ пользователю на основе запроса пользователя и этих данных."
+//            )
+//        )
 
         // Get final AI response
         val finalResult = sendToAi(apiMessages, model, temperature)

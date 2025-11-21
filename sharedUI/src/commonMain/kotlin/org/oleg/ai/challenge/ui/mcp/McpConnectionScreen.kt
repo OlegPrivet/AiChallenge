@@ -1288,6 +1288,15 @@ private fun ToolCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            tool.connectionName?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -1338,6 +1347,14 @@ private fun ToolInvocationDialog(
         title = { Text("Invoke Tool: ${tool.name}") },
         text = {
             Column {
+                tool.connectionName?.let {
+                    Text(
+                        "From: $it",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 OutlinedTextField(
                     value = argsJson,
                     onValueChange = { newValue ->

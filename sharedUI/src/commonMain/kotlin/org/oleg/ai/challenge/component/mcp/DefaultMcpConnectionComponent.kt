@@ -359,7 +359,7 @@ class DefaultMcpConnectionComponent(
 
     override fun onInvokeTool() {
         val tool = _state.value.selectedTool ?: return
-        val connectionId = _state.value.activeConnectionId ?: run {
+        val connectionId = tool.connectionId ?: _state.value.activeConnectionId ?: run {
             _state.value = _state.value.copy(
                 errorMessage = "Select an active connection before invoking tools"
             )
