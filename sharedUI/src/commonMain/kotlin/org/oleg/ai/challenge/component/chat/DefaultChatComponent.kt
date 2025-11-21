@@ -70,6 +70,7 @@ class DefaultChatComponent(
     init {
         // Observe MCP UI state changes from the orchestrator
         scope.launch {
+            setZygotePrompt()
 
             chatOrchestratorService.mcpUiState
                 .onEach { state ->
@@ -108,28 +109,24 @@ class DefaultChatComponent(
         // Remove existing tool prompts
         allMessages.removeAll { it.isMcpSystemPrompt }
 
-        allMessages.add(0, ChatMessage(
-            id = "${System.now()}_tool_system",
-            text = """
-        Ты агент, который умеет формировать запросы по описанию инструментов MCP сервера и запрашивать работу конкретного MCP сервера
-        Если в тексте пользователя есть информация, которая подходит под описание инструмента MCP сервера, тебе нужно вернуть в ответе ТОЛЬКО объект с данными, согласно описанию инструмента
-        Если в новых сообщениях пользователя есть информация, которая подходит под описание инструмента MCP сервера, то нужно вернуть в ответе ТОЛЬКО объект с данными, согласно описанию инструмента
-        Если пользоваетль в последнем сообщении просит сформулировать ответ, то выдай итоговый ответ
-        
-    """.trimIndent(),
-            isFromUser = false,
-            timestamp = 0,
-            role = MessageRole.SYSTEM,
-            isVisibleInUI = false,
-            agentName = "",
-            agentId = "",
-            modelUsed = "",
-            usage = null,
-            mcpName = "",
-            isMcpSystemPrompt = true,
-            isMcpIntermediate = false
+        allMessages.add(
+            0, ChatMessage(
+                id = "${System.now()}_tool_system",
+                text = """In the instructions for the user, YOU MUST request the following tools""".trimIndent(),
+                isFromUser = false,
+                timestamp = 0,
+                role = MessageRole.SYSTEM,
+                isVisibleInUI = false,
+                agentName = "",
+                agentId = "",
+                modelUsed = "",
+                usage = null,
+                mcpName = "",
+                isMcpSystemPrompt = true,
+                isMcpIntermediate = false
 
-        ))
+            )
+        )
         // Create and add new tool prompts (no agentId - they're global)
         val toolPrompts = chatOrchestratorService.createToolSystemPrompts(
             enabledTools = tools,
@@ -470,7 +467,7 @@ class DefaultChatComponent(
 
                 when (result) {
                     is ApiResult.Success -> {
-                        val summaryText = result.data.choices.firstOrNull()?.message?.content
+                        val summaryText = result.data.choices.firstOrNull()?.message?.content?.message
                         if (summaryText != null) {
                             // Add summary message (visible)
                             val summaryMessage = ChatMessage(
@@ -571,4 +568,113 @@ class DefaultChatComponent(
     @OptIn(ExperimentalTime::class)
     private fun generateId(): String =
         "${System.now()}_${(0..1000).random()}_${(0..500).random()}"
+
+    private suspend fun setZygotePrompt() {
+        allMessages.add(
+            ChatMessage(
+                id = "",
+                text = """
+                    #MAIN RULE
+                    IN YOUR ANSWERS, YOU MUST ALWAYS FOLLOW THE FOLLOWING ANSWER STRUCTURE IN JSON FORMAT
+{
+  "type": "object",
+  "name": "ResponseContent",
+  "description": "Container holding a message and optional processing instructions.",
+  "properties": {
+    "message": {
+      "type": "string",
+      "description": "Main textual response message."
+    },
+    "instructions": {
+      "type": "array",
+      "description": "Optional list of instructions to execute.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "name": "CallTool",
+            "description": "Instruction to call a specific tool with arguments.",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Tool name to invoke."
+              },
+              "arguments": {
+                "type": "object",
+                "description": "Raw JSON object with tool parameters."
+              },
+              "isCompleted": {
+                "type": "boolean",
+                "description": "Indicates whether this instruction has been executed."
+              }
+            },
+            "required": ["name", "arguments", "isCompleted"]
+          },
+          {
+            "type": "object",
+            "name": "CallAi",
+            "description": "Instruction to execute an AI operation based on expected and actual results.",
+            "properties": {
+              "expectedResultOfInstruction": {
+                "type": "string",
+                "description": "Expected output from the AI instruction."
+              },
+              "actualResultOfInstruction": {
+                "type": "string",
+                "description": "Actual output produced by the AI instruction."
+              },
+              "isCompleted": {
+                "type": "boolean",
+                "description": "Indicates whether this instruction has been executed."
+              }
+            },
+            "required": ["expectedResultOfInstruction", "isCompleted"]
+          }
+        ]
+      }
+    }
+  },
+  "required": ["message"]
+}
+                    IF YOU SEND A DIFFERENT TYPE OF RESPONSE, I WILL NOT BE ABLE TO PROCESS IT AND THIS WILL CAUSE THE PROGRAM TO CRASH.
+                    IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FOR A FINAL ANSWER, THEN THE LIST OF INSTRUCTIONS SHOULD BE SENT NULL.
+                """.trimIndent(),
+                isFromUser = false,
+                timestamp = 0,
+                role = MessageRole.SYSTEM,
+                isVisibleInUI = false,
+                agentName = "",
+                agentId = "",
+                modelUsed = "",
+                usage = null,
+                mcpName = "",
+                isMcpSystemPrompt = false,
+                isMcpIntermediate = false
+            )
+        )
+
+        allMessages.add(
+            ChatMessage(
+                id = "",
+                text = """
+                    You are an agent - please keep going until the user’s query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
+                    If you are not sure about file content or codebase structure pertaining to the user’s request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
+                    You MUST plan extensively before each function call, and reflect extensively on the outcomes of the previous function calls. DO NOT do this entire process by making function calls only, as this can impair your ability to solve the problem and think insightfully.
+                    To solve the problem, YOU MUST write instructions for execution and present them to the user in your answer.
+                """.trimIndent(),
+                isFromUser = false,
+                timestamp = 0,
+                role = MessageRole.SYSTEM,
+                isVisibleInUI = false,
+                agentName = "",
+                agentId = "",
+                modelUsed = "",
+                usage = null,
+                mcpName = "",
+                isMcpSystemPrompt = false,
+                isMcpIntermediate = false
+            )
+        )
+        chatRepository.saveMessages(chatId!!, allMessages)
+    }
 }

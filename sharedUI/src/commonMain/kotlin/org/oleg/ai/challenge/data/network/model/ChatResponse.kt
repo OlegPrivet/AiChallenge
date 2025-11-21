@@ -2,6 +2,7 @@ package org.oleg.ai.challenge.data.network.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Represents a chat completion response from the OpenRouter API.
@@ -55,7 +56,7 @@ data class ChatChoice(
 @Serializable
 data class AssistantMessage(
     val role: String,
-    val content: String
+    val content: ResponseContent
 )
 
 /**
@@ -74,3 +75,22 @@ data class Usage(
     @SerialName("total_tokens")
     val totalTokens: Int
 )
+
+@Serializable
+data class ResponseContent(
+    val message: String,
+    val instructions: List<Instructions>? = null,
+)
+
+@Serializable
+sealed class Instructions {
+    @Serializable
+    data class CallTool(val name: String, val arguments: JsonObject, val isCompleted: Boolean) : Instructions()
+
+    @Serializable
+    data class CallAi(
+        val expectedResultOfInstruction: String,
+        val actualResultOfInstruction: String = "",
+        val isCompleted: Boolean,
+    ) : Instructions()
+}
