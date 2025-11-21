@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import org.oleg.ai.challenge.data.model.ChatMessage
 import org.oleg.ai.challenge.data.model.McpProcessingPhase
@@ -12,6 +11,9 @@ import org.oleg.ai.challenge.data.model.McpUiState
 import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
+import org.oleg.ai.challenge.data.network.json
+import org.oleg.ai.challenge.data.network.model.Instructions
+import org.oleg.ai.challenge.data.network.model.ResponseContent
 import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.ui.mcp.jsonElementToAny
 import org.oleg.ai.challenge.data.network.model.ChatMessage as ApiChatMessage
@@ -41,6 +43,12 @@ class ChatOrchestratorService(
     private val _mcpUiState = MutableStateFlow(McpUiState())
     val mcpUiState: StateFlow<McpUiState> = _mcpUiState.asStateFlow()
 
+    companion object {
+        private const val MAX_INSTRUCTION_ITERATIONS = 5
+        private const val MAX_INSTRUCTION_DEPTH = 3
+        private const val MAX_RESULT_LENGTH = 2_000
+    }
+
     /**
      * Result of the orchestration process.
      */
@@ -60,6 +68,26 @@ class ChatOrchestratorService(
         data class Error(val message: String) : OrchestratorResult()
     }
 
+    private sealed class AiCallResult {
+        data class Success(
+            val content: ResponseContent,
+            val model: String,
+            val usage: Usage?,
+        ) : AiCallResult()
+
+        data class Error(val message: String) : AiCallResult()
+    }
+
+    private sealed class InstructionExecutionResult {
+        data class ContinueWith(val messages: MutableList<ApiChatMessage>) : InstructionExecutionResult()
+        data class Error(val message: String) : InstructionExecutionResult()
+    }
+
+    private data class InstructionExecutionSummary(
+        val title: String,
+        val output: String,
+    )
+
     /**
      * Handles a user message with full MCP orchestration.
      *
@@ -72,280 +100,223 @@ class ChatOrchestratorService(
         conversationHistory: List<ChatMessage>,
         model: String,
         temperature: Float,
-        toolName: String,
+        @Suppress("UNUSED_PARAMETER") toolName: String,
     ): OrchestratorResult {
         logger.d { "Processing user message with MCP orchestration" }
 
-        // Convert UI messages to API format
         val apiMessages = conversationHistory.map { it.toApiMessage() }.toMutableList()
 
-        // Get available tools
-        val availableTools = mcpClientService.availableTools.value
-
-        // If no tools available, just send to AI directly
-        if (availableTools.isEmpty()) {
-            logger.d { "No MCP tools available, sending directly to AI" }
-            return sendToAiDirect(apiMessages, model, temperature)
-        }
-
-        // Step 1: Get initial AI response (draft - not shown)
         updateMcpState(
             isMcpRunning = true,
             phase = McpProcessingPhase.Validating
         )
 
-        return sendToAi(apiMessages, model, temperature)
-//        if (initialResponse is OrchestratorResult.Error) {
-//            resetMcpState()
-//            return initialResponse
-//        }
-//
-//        val draftResponse = (initialResponse as OrchestratorResult.Success).finalResponse
-//
-//        // Step 2: Validate response against tool schemas
-////        val validationResult = toolValidationService.validateResponse(draftResponse, availableTools)
-//
-//        val toolRequest: ToolRequest = try {
-//            json.decodeFromString(draftResponse)
-//        } catch (e: Exception) {
-//            ToolRequest(name = "empty", arguments = EmptyJsonObject)
-//        }
-//        logger.i { "Valid tool call for 'get_messages'" }
-//        return processMcpToolCall(
-//            apiMessages = apiMessages,
-//            toolName = toolRequest.name,
-//            arguments = toolRequest.getArgs(),
-//            model = model,
-//            temperature = temperature
-//        )
-
-
-//        when (validationResult) {
-//            is ToolValidationService.ValidationResult.NoToolCall -> {
-//                // No tool call detected - return the response directly
-//                logger.d { "No tool call in response, returning directly" }
-//                resetMcpState()
-//                initialResponse
-//            }
-//
-//            is ToolValidationService.ValidationResult.Invalid -> {
-//                // Validation failed - retry
-//                logger.w { "Validation failed: ${validationResult.reason}" }
-//                handleValidationFailure(
-//                    apiMessages = apiMessages,
-//                    originalResponse = draftResponse,
-//                    error = validationResult.reason,
-//                    tool = null,
-//                    model = model,
-//                    temperature = temperature
-//                )
-//            }
-//
-//            is ToolValidationService.ValidationResult.Valid -> {
-//                // Valid tool call - process through MCP
-//                val jsonObject = json.parseToJsonElement(draftResponse) as? JsonObject
-//                val args = if (jsonObject != null) {
-//                    val parsedMap = jsonObject.mapValues { (_, value) ->
-//                        jsonElementToAny(value)
-//                    }
-//                    parsedMap
-//                } else {
-//                    // Not a JSON object, reset to empty map
-//                    emptyMap()
-//                }
-//                logger.i { "Valid tool call for '${validationResult.toolName}'" }
-//                processMcpToolCall(
-//                    apiMessages = apiMessages,
-//                    toolName = "get_current",
-//                    arguments = args,
-//                    model = model,
-//                    temperature = temperature
-//                )
-//            }
-//        }
-    }
-
-    @Serializable
-    data class ToolRequest(
-        val name: String,
-        val arguments: JsonObject,
-    ) {
-
-        fun getArgs(): Map<String, Any> {
-            return try {
-                arguments.mapValues { (_, value) ->
-                    jsonElementToAny(value)
-                }
-            } catch (e: Exception) {
-                emptyMap()
-            }
+        return try {
+            runConversationFlow(
+                apiMessages = apiMessages,
+                model = model,
+                temperature = temperature,
+                depth = 0
+            )
+        } catch (e: Exception) {
+            logger.e(e) { "Failed to handle user message" }
+            OrchestratorResult.Error(e.message ?: "Unknown orchestration error")
+        } finally {
+            resetMcpState()
         }
     }
 
-    /**
-     * Handles validation failure with retry logic.
-     */
-    private suspend fun handleValidationFailure(
+    private suspend fun runConversationFlow(
         apiMessages: MutableList<ApiChatMessage>,
-        originalResponse: String,
-        error: String,
-        tool: McpClientService.ToolInfo?,
         model: String,
         temperature: Float,
+        depth: Int,
     ): OrchestratorResult {
-        val currentRetryCount = _mcpUiState.value.retryCount
-
-        if (currentRetryCount >= McpUiState.MAX_RETRIES) {
-            logger.w { "Max retries exceeded, falling back to direct response" }
-            resetMcpState()
-            // Return the original response as fallback
-            return OrchestratorResult.Success(
-                finalResponse = originalResponse,
-                model = model,
-                usage = null
-            )
+        if (depth > MAX_INSTRUCTION_DEPTH) {
+            logger.w { "Instruction depth exceeded" }
+            return OrchestratorResult.Error("Instruction depth exceeded")
         }
 
-        // Update state for retry
+        var iteration = 0
+        var messages = apiMessages
+
+        while (iteration < MAX_INSTRUCTION_ITERATIONS) {
+            iteration++
+
+            when (val aiResult = sendToAi(messages, model, temperature)) {
+                is AiCallResult.Error -> return OrchestratorResult.Error(aiResult.message)
+                is AiCallResult.Success -> {
+                    val responseContent = aiResult.content
+                    val instructions = responseContent.instructions
+
+                    if (instructions.isNullOrEmpty() || instructions.all { it.isCompleted }) {
+                        logger.d { "All instructions completed or absent, returning final response" }
+                        return OrchestratorResult.Success(
+                            finalResponse = responseContent.message,
+                            model = aiResult.model,
+                            usage = aiResult.usage
+                        )
+                    }
+
+                    val instructionExecution = executeInstructions(
+                        instructions = instructions,
+                        baseMessages = messages,
+                        model = model,
+                        temperature = temperature,
+                        depth = depth
+                    )
+
+                    when (instructionExecution) {
+                        is InstructionExecutionResult.Error -> return OrchestratorResult.Error(instructionExecution.message)
+                        is InstructionExecutionResult.ContinueWith -> {
+                            messages = instructionExecution.messages
+                        }
+                    }
+                }
+            }
+        }
+
+        logger.w { "Instruction processing exceeded $MAX_INSTRUCTION_ITERATIONS iterations" }
+        return OrchestratorResult.Error("Instruction processing exceeded limit")
+    }
+
+    private suspend fun executeInstructions(
+        instructions: List<Instructions>,
+        baseMessages: MutableList<ApiChatMessage>,
+        model: String,
+        temperature: Float,
+        depth: Int,
+    ): InstructionExecutionResult {
+        val executionSummaries = mutableListOf<InstructionExecutionSummary>()
+        val updatedMessages = baseMessages.toMutableList()
+
+        instructions.forEach { instruction ->
+            if (instruction.isCompleted) return@forEach
+
+            when (instruction) {
+                is Instructions.CallMCPTool -> {
+                    updateMcpState(
+                        isMcpRunning = true,
+                        phase = McpProcessingPhase.InvokingTool,
+                        currentToolName = instruction.name
+                    )
+
+                    val argsMap = try {
+                        instruction.arguments.toArgumentMap()
+                    } catch (e: Exception) {
+                        logger.e(e) { "Failed to parse arguments for ${instruction.name}" }
+                        return InstructionExecutionResult.Error(
+                            "Failed to parse arguments for ${instruction.name}: ${e.message ?: "Unknown error"}"
+                        )
+                    }
+
+                    val mcpResult = mcpClientService.callTool(instruction.name, argsMap)
+                    if (mcpResult.isFailure) {
+                        val errorMessage = mcpResult.exceptionOrNull()?.message ?: "Unknown MCP error"
+                        logger.e { "MCP tool call failed: $errorMessage" }
+                        return InstructionExecutionResult.Error("MCP tool error: $errorMessage")
+                    }
+
+                    val resultText = mcpResult.getOrThrow().limitForReport()
+                    executionSummaries.add(
+                        InstructionExecutionSummary(
+                            title = instruction.name,
+                            output = resultText
+                        )
+                    )
+                }
+
+                is Instructions.CallAi -> {
+                    if (depth >= MAX_INSTRUCTION_DEPTH) {
+                        logger.w { "Max instruction depth reached for CallAi" }
+                        return InstructionExecutionResult.Error("Instruction depth exceeded for AI instruction")
+                    }
+
+                    val instructionMessages = baseMessages.toMutableList()
+
+                    if (executionSummaries.isNotEmpty()) {
+                        val contextSummary = executionSummaries.joinToString(separator = "\n") { summary ->
+                            "${summary.title}: ${summary.output}"
+                        }.limitForReport()
+                        instructionMessages.add(
+                            ApiChatMessage(
+                                role = ApiMessageRole.USER,
+                                content = "Context from executed instructions:\n$contextSummary"
+                            )
+                        )
+                    }
+
+                    instructionMessages.add(
+                        ApiChatMessage(
+                            role = ApiMessageRole.USER,
+                            content = instruction.expectedResultOfInstruction
+                        )
+                    )
+
+                    val aiInstructionResult = runConversationFlow(
+                        apiMessages = instructionMessages,
+                        model = model,
+                        temperature = temperature,
+                        depth = depth + 1
+                    )
+
+                    when (aiInstructionResult) {
+                        is OrchestratorResult.Error -> return InstructionExecutionResult.Error(aiInstructionResult.message)
+                        is OrchestratorResult.Success -> executionSummaries.add(
+                            InstructionExecutionSummary(
+                                title = instruction.expectedResultOfInstruction,
+                                output = aiInstructionResult.finalResponse.limitForReport()
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        if (executionSummaries.isEmpty()) {
+            return InstructionExecutionResult.ContinueWith(updatedMessages)
+        }
+
         updateMcpState(
             isMcpRunning = true,
-            phase = McpProcessingPhase.Retrying,
-            validationError = error,
-            retryCount = currentRetryCount + 1
+            phase = McpProcessingPhase.GeneratingFinalResponse
         )
 
-        // Add the draft response to context
-        apiMessages.add(
-            ApiChatMessage(
-                role = ApiMessageRole.ASSISTANT,
-                content = originalResponse
-            )
-        )
-
-        // Create error prompt
-        val errorPrompt = toolValidationService.createValidationErrorPrompt(
-            validationError = error,
-            toolName = tool?.name ?: "unknown",
-            inputSchema = tool?.parameters
-        )
-
-        // Add error prompt as user message
-        apiMessages.add(
+        val followUpPrompt = buildInstructionReport(executionSummaries)
+        updatedMessages.add(
             ApiChatMessage(
                 role = ApiMessageRole.USER,
-                content = errorPrompt
+                content = followUpPrompt
             )
         )
 
-        // Retry AI call
-        logger.d { "Retrying AI call after validation failure (attempt ${currentRetryCount + 1})" }
-        val retryResponse = sendToAi(apiMessages, model, temperature)
+        return InstructionExecutionResult.ContinueWith(updatedMessages)
+    }
 
-        if (retryResponse is OrchestratorResult.Error) {
-            resetMcpState()
-            return retryResponse
-        }
-
-        val retryText = (retryResponse as OrchestratorResult.Success).finalResponse
-
-        // Re-validate
-        val availableTools = mcpClientService.availableTools.value
-        val revalidation = toolValidationService.validateResponse(retryText, availableTools)
-
-        return when (revalidation) {
-            is ToolValidationService.ValidationResult.NoToolCall -> {
-                logger.d { "No tool call in retry response" }
-                resetMcpState()
-                retryResponse
+    private fun buildInstructionReport(executions: List<InstructionExecutionSummary>): String {
+        return buildString {
+            append("The following instructions were executed automatically and marked as completed:\n")
+            executions.forEachIndexed { index, summary ->
+                append("${index + 1}. ${summary.title}\n")
+                append("Result: ${summary.output}\n")
             }
-
-            is ToolValidationService.ValidationResult.Invalid -> {
-                // Recursive retry
-                handleValidationFailure(
-                    apiMessages = apiMessages,
-                    originalResponse = retryText,
-                    error = revalidation.reason,
-                    tool = tool,
-                    model = model,
-                    temperature = temperature
-                )
-            }
-
-            is ToolValidationService.ValidationResult.Valid -> {
-                processMcpToolCall(
-                    apiMessages = apiMessages,
-                    toolName = revalidation.toolName,
-                    arguments = revalidation.arguments,
-                    model = model,
-                    temperature = temperature
-                )
-            }
+            append("Return the next ResponseContent JSON. Mark executed instructions with isCompleted=true, ")
+            append("fill actualResultOfInstruction where it applies, and include remaining instructions if more work is needed.")
         }
     }
 
-    /**
-     * Processes a validated MCP tool call.
-     */
-    private suspend fun processMcpToolCall(
-        apiMessages: MutableList<ApiChatMessage>,
-        toolName: String,
-        arguments: Map<String, Any>,
-        model: String,
-        temperature: Float,
-    ): OrchestratorResult {
-        logger.d { "Invoking MCP tool: $toolName with ${arguments.size} arguments" }
-
-        // Update state
-        updateMcpState(
-            isMcpRunning = true,
-            phase = McpProcessingPhase.InvokingTool,
-            currentToolName = toolName
-        )
-
-        // Call the MCP tool
-        val mcpResult = mcpClientService.callTool(toolName, arguments)
-
-        if (mcpResult.isFailure) {
-            val error = mcpResult.exceptionOrNull()?.message ?: "Unknown MCP error"
-            logger.e { "MCP tool call failed: $error" }
-            resetMcpState()
-            return OrchestratorResult.Error("MCP tool error: $error")
+    private fun JsonObject.toArgumentMap(): Map<String, Any> {
+        return this.mapValues { (_, value) ->
+            jsonElementToAny(value)
         }
-
-        val mcpResponse = mcpResult.getOrThrow()
-        logger.d { "MCP tool response: ${mcpResponse.take(200)}..." }
-
-        // Update state for final response generation
-        updateMcpState(
-            isMcpRunning = true,
-            phase = McpProcessingPhase.GeneratingFinalResponse,
-            currentToolName = toolName
-        )
-
-        // Send MCP response to AI for final answer (silently, not shown in UI)
-//        apiMessages.add(
-//            ApiChatMessage(
-//                role = ApiMessageRole.USER,
-//                content = "Ответ MCP инструмента '$toolName':\n$mcpResponse\n\nСформулируй окончательный ответ пользователю на основе запроса пользователя и этих данных."
-//            )
-//        )
-
-        // Get final AI response
-        val finalResult = sendToAi(apiMessages, model, temperature)
-
-        resetMcpState()
-        return finalResult
     }
 
-    /**
-     * Sends messages directly to AI without MCP processing.
-     */
-    private suspend fun sendToAiDirect(
-        messages: List<ApiChatMessage>,
-        model: String,
-        temperature: Float,
-    ): OrchestratorResult {
-        return sendToAi(messages, model, temperature)
+    private fun String.limitForReport(maxLength: Int = MAX_RESULT_LENGTH): String {
+        return if (length > maxLength) {
+            "${take(maxLength)}..."
+        } else {
+            this
+        }
     }
 
     /**
@@ -355,7 +326,7 @@ class ChatOrchestratorService(
         messages: List<ApiChatMessage>,
         model: String,
         temperature: Float,
-    ): OrchestratorResult {
+    ): AiCallResult {
         val request = createConversationRequest(
             messages = messages,
             model = model,
@@ -364,20 +335,19 @@ class ChatOrchestratorService(
 
         return when (val result = chatApiService.sendChatCompletion(request)) {
             is ApiResult.Success -> {
-                val responseText = result.data.choices.firstOrNull()?.message?.content
-                if (responseText == null) {
-                    OrchestratorResult.Error("Empty response from AI")
-                } else {
-                    OrchestratorResult.Success(
-                        finalResponse = responseText,
-                        model = result.data.model,
-                        usage = result.data.usage
-                    )
-                }
+                val resultString = result.data.choices.firstOrNull()?.message?.content
+                    ?: return AiCallResult.Error("Empty response from AI")
+
+                val responseContent = json.decodeFromString<ResponseContent>(resultString)
+                AiCallResult.Success(
+                    content = responseContent,
+                    model = result.data.model,
+                    usage = result.data.usage
+                )
             }
 
             is ApiResult.Error -> {
-                OrchestratorResult.Error(result.error.getDescription())
+                AiCallResult.Error(result.error.getDescription())
             }
         }
     }

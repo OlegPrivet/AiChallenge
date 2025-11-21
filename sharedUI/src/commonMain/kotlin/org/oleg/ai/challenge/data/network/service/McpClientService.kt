@@ -673,7 +673,7 @@ class McpClientService(
         arguments: Map<String, Any> = emptyMap(),
         connectionId: String? = _activeConnectionId.value,
     ): Result<String> {
-        val connection = resolveConnection(connectionId ?: findConnectionIdForTool(name))
+        val connection = resolveConnection(findConnectionIdForTool(name))
             ?: return Result.failure(IllegalStateException("Not connected to MCP server"))
 
         return try {

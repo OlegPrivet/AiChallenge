@@ -249,7 +249,7 @@ private fun LoadingIndicator(mcpUiState: McpUiState = McpUiState()) {
                     val statusText = when {
                         mcpUiState.isMcpRunning -> {
                             when (mcpUiState.processingPhase) {
-                                McpProcessingPhase.Validating -> "Validating response..."
+                                McpProcessingPhase.Validating -> "Validating..."
                                 McpProcessingPhase.InvokingTool -> {
                                     mcpUiState.currentToolName?.let { "Calling tool: $it" }
                                         ?: "Invoking MCP tool..."

@@ -467,7 +467,7 @@ class DefaultChatComponent(
 
                 when (result) {
                     is ApiResult.Success -> {
-                        val summaryText = result.data.choices.firstOrNull()?.message?.content?.message
+                        val summaryText = result.data.choices.firstOrNull()?.message?.content
                         if (summaryText != null) {
                             // Add summary message (visible)
                             val summaryMessage = ChatMessage(
@@ -570,54 +570,76 @@ class DefaultChatComponent(
         "${System.now()}_${(0..1000).random()}_${(0..500).random()}"
 
     private suspend fun setZygotePrompt() {
+        val messages = chatRepository.getMessagesForChatSuspend(chatId!!)
+        if (messages.any { it.id == "RULE 1" || messages.any { it.id == "RULE 2" } }) return
+
+        allMessages.clear()
         allMessages.add(
             ChatMessage(
-                id = "",
+                id = "RULE 1",
                 text = """
-                    #MAIN RULE
-                    IN YOUR ANSWERS, YOU MUST ALWAYS FOLLOW THE FOLLOWING ANSWER STRUCTURE IN JSON FORMAT
+#MAIN RULE
+IN YOUR RESPONSES, YOU MUST ALWAYS FOLLOW THE RESPONSE STRUCTURE IN THE JSON OBJECT
+THE CONTENT FIELD IN THE RESPONSE MUST BE OF TYPE JSON OBJECT
 {
   "type": "object",
   "name": "ResponseContent",
-  "description": "Container holding a message and optional processing instructions.",
+  "description": "Container with a message and optional list of execution instructions.",
   "properties": {
     "message": {
       "type": "string",
-      "description": "Main textual response message."
+      "description": "Primary text message returned by the system."
     },
     "instructions": {
       "type": "array",
-      "description": "Optional list of instructions to execute.",
+      "description": "Optional ordered list of instructions to perform.",
       "items": {
+        "type": "object",
+        "description": "Polymorphic instruction. Selected by the `type` discriminator.",
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "CallMCPTool": "#/components/schemas/CallMCPTool",
+            "CallAi": "#/components/schemas/CallAi"
+          }
+        },
         "oneOf": [
           {
             "type": "object",
-            "name": "CallTool",
-            "description": "Instruction to call a specific tool with arguments.",
+            "name": "CallMCPTool",
+            "description": "Instruction to call an MCP tool with arguments.",
             "properties": {
+              "type": {
+                "type": "string",
+                "const": "CallMCPTool"
+              },
               "name": {
                 "type": "string",
-                "description": "Tool name to invoke."
+                "description": "The name of the tool to invoke."
               },
               "arguments": {
                 "type": "object",
-                "description": "Raw JSON object with tool parameters."
+                "description": "Raw JSON object of tool arguments."
               },
               "isCompleted": {
                 "type": "boolean",
-                "description": "Indicates whether this instruction has been executed."
+                "description": "Indicates whether this instruction has completed."
               }
             },
-            "required": ["name", "arguments", "isCompleted"]
+            "required": ["type", "name", "arguments", "isCompleted"]
           },
           {
             "type": "object",
             "name": "CallAi",
-            "description": "Instruction to execute an AI operation based on expected and actual results.",
+            "description": "Instruction to execute an AI step and compare expected vs actual output.",
             "properties": {
+              "type": {
+                "type": "string",
+                "const": "CallAi"
+              },
               "expectedResultOfInstruction": {
                 "type": "string",
-                "description": "Expected output from the AI instruction."
+                "description": "Description of the expected output from this AI instruction."
               },
               "actualResultOfInstruction": {
                 "type": "string",
@@ -625,10 +647,10 @@ class DefaultChatComponent(
               },
               "isCompleted": {
                 "type": "boolean",
-                "description": "Indicates whether this instruction has been executed."
+                "description": "Indicates whether this instruction has completed."
               }
             },
-            "required": ["expectedResultOfInstruction", "isCompleted"]
+            "required": ["type", "expectedResultOfInstruction", "isCompleted"]
           }
         ]
       }
@@ -636,8 +658,8 @@ class DefaultChatComponent(
   },
   "required": ["message"]
 }
-                    IF YOU SEND A DIFFERENT TYPE OF RESPONSE, I WILL NOT BE ABLE TO PROCESS IT AND THIS WILL CAUSE THE PROGRAM TO CRASH.
-                    IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FOR A FINAL ANSWER, THEN THE LIST OF INSTRUCTIONS SHOULD BE SENT NULL.
+IF YOU SEND A DIFFERENT TYPE OF RESPONSE, I WILL NOT BE ABLE TO PROCESS IT AND THIS WILL CAUSE THE PROGRAM TO CRASH.
+IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FOR A FINAL ANSWER, THEN THE LIST OF INSTRUCTIONS SHOULD BE SENT NULL.
                 """.trimIndent(),
                 isFromUser = false,
                 timestamp = 0,
@@ -655,7 +677,7 @@ class DefaultChatComponent(
 
         allMessages.add(
             ChatMessage(
-                id = "",
+                id = "RULE 2",
                 text = """
                     You are an agent - please keep going until the user’s query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
                     If you are not sure about file content or codebase structure pertaining to the user’s request, use your tools to read files and gather the relevant information: do NOT guess or make up an answer.
