@@ -22,6 +22,7 @@ buildConfig = "5.7.0"
 icons = "1.7.3"
 mcp-kotlin = "0.7.7"
 meeseeks = "0.6.0-alpha02"
+lucene = "10.3.2"
 
 [libraries]
 
@@ -55,6 +56,9 @@ icons = { module = "org.jetbrains.compose.material:material-icons-core", version
 mcp-kotlin-client = { module = "io.modelcontextprotocol:kotlin-sdk-client", version.ref = "mcp-kotlin" }
 mcp-kotlin-core = { module = "io.modelcontextprotocol:kotlin-sdk-core", version.ref = "mcp-kotlin" }
 meeseeks = { module = "dev.mattramotar.meeseeks:runtime", version.ref = "meeseeks" }
+lucene-core = { module = "org.apache.lucene:lucene-core", version.ref = "lucene" }
+lucene-analyzers-common = { module = "org.apache.lucene:lucene-analysis-common", version.ref = "lucene" }
+lucene-queryparser = { module = "org.apache.lucene:lucene-queryparser", version.ref = "lucene" }
 
 [plugins]
 

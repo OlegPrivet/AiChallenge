@@ -38,6 +38,7 @@ class ChatOrchestratorService(
     private val chatApiService: ChatApiService,
     private val mcpClientService: McpClientService,
     private val toolValidationService: ToolValidationService,
+    private val ragOrchestrator: org.oleg.ai.challenge.domain.rag.orchestrator.RagOrchestrator? = null,
     private val logger: Logger = Logger.withTag("ChatOrchestratorService"),
 ) {
     private val _mcpUiState = MutableStateFlow(McpUiState())
@@ -60,6 +61,8 @@ class ChatOrchestratorService(
             val finalResponse: String,
             val model: String,
             val usage: Usage?,
+            val citations: List<org.oleg.ai.challenge.domain.rag.orchestrator.Citation>? = null,
+            val retrievalTrace: org.oleg.ai.challenge.domain.rag.orchestrator.RetrievalTrace? = null,
         ) : OrchestratorResult()
 
         /**
@@ -101,10 +104,42 @@ class ChatOrchestratorService(
         model: String,
         temperature: Float,
         @Suppress("UNUSED_PARAMETER") toolName: String,
+        isRagEnabled: Boolean = false,
     ): OrchestratorResult {
-        logger.d { "Processing user message with MCP orchestration" }
+        logger.d { "Processing user message with MCP orchestration (RAG enabled: $isRagEnabled)" }
 
         val apiMessages = conversationHistory.map { it.toApiMessage() }.toMutableList()
+
+        // RAG enhancement: retrieve context before sending to AI
+        var ragResult: org.oleg.ai.challenge.domain.rag.orchestrator.RagResult? = null
+        if (isRagEnabled && ragOrchestrator != null) {
+            try {
+                val userQuery = conversationHistory.lastOrNull { it.isFromUser }?.text
+                if (userQuery != null) {
+                    logger.d { "Retrieving RAG context for query: $userQuery" }
+                    ragResult = ragOrchestrator.retrieve(
+                        query = userQuery,
+                        topK = 6
+                    )
+
+                    // Build augmented prompt with retrieved context
+                    val contextPrompt = buildRagContextPrompt(ragResult, userQuery)
+
+                    // Replace the last user message with augmented version
+                    val lastUserMessageIndex = apiMessages.indexOfLast { it.role == ApiMessageRole.USER }
+                    if (lastUserMessageIndex >= 0) {
+                        apiMessages[lastUserMessageIndex] = apiMessages[lastUserMessageIndex].copy(
+                            content = contextPrompt
+                        )
+                    }
+
+                    logger.d { "RAG context retrieved: ${ragResult.results.size} chunks, ${ragResult.citations.size} citations" }
+                }
+            } catch (e: Exception) {
+                logger.e(e) { "Failed to retrieve RAG context, continuing without RAG" }
+                // Continue without RAG on error
+            }
+        }
 
         updateMcpState(
             isMcpRunning = true,
@@ -112,17 +147,44 @@ class ChatOrchestratorService(
         )
 
         return try {
-            runConversationFlow(
+            val result = runConversationFlow(
                 apiMessages = apiMessages,
                 model = model,
                 temperature = temperature,
                 depth = 0
             )
+
+            // Attach RAG data to successful result
+            if (result is OrchestratorResult.Success && ragResult != null) {
+                result.copy(
+                    citations = ragResult.citations,
+                    retrievalTrace = ragResult.trace
+                )
+            } else {
+                result
+            }
         } catch (e: Exception) {
             logger.e(e) { "Failed to handle user message" }
             OrchestratorResult.Error(e.message ?: "Unknown orchestration error")
         } finally {
             resetMcpState()
+        }
+    }
+
+    /**
+     * Build an augmented prompt with RAG context.
+     */
+    private fun buildRagContextPrompt(ragResult: org.oleg.ai.challenge.domain.rag.orchestrator.RagResult, userQuery: String): String {
+        return buildString {
+            appendLine("Context from knowledge base:")
+            appendLine()
+            appendLine(ragResult.context)
+            appendLine()
+            appendLine("---")
+            appendLine()
+            appendLine("User question: $userQuery")
+            appendLine()
+            appendLine("Instructions: Answer the user's question using the provided context above. When referencing information from the context, cite the source using the citation number in square brackets (e.g., [1], [2]).")
         }
     }
 

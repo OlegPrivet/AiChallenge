@@ -14,7 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.Card
@@ -64,6 +66,10 @@ fun ChatScreen(
     val currentAgentModel by component.currentAgentModel.subscribeAsState()
     val currentTemperature by component.currentTemperature.subscribeAsState()
     val mcpUiState by component.mcpUiState.subscribeAsState()
+    val isRagEnabled by component.isRagEnabled.subscribeAsState()
+    val isDeveloperModeEnabled by component.isDeveloperModeEnabled.subscribeAsState()
+
+    val selectedCitationSource = component.getSelectedCitationSource()
 
     val lazyListState: LazyListState = rememberLazyListState()
     val isSummarizeVisibility by remember(isLoading) {
@@ -105,6 +111,32 @@ fun ChatScreen(
                 modifier = Modifier.fillMaxWidth()
             )
 
+            // RAG mode toggle
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FilterChip(
+                    selected = isRagEnabled,
+                    onClick = { component.onToggleRagMode(!isRagEnabled) },
+                    label = { Text(if (isRagEnabled) "RAG: ON" else "RAG: OFF") },
+                    leadingIcon = {
+                        Text(if (isRagEnabled) "🔍" else "💬")
+                    }
+                )
+
+                if (isRagEnabled) {
+                    FilterChip(
+                        selected = isDeveloperModeEnabled,
+                        onClick = { component.onToggleDeveloperMode(!isDeveloperModeEnabled) },
+                        label = { Text("Dev Mode") }
+                    )
+                }
+            }
+
             // Message list
             LazyColumn(
                 modifier = Modifier
@@ -119,7 +151,11 @@ fun ChatScreen(
                     messages.filter { it.isVisibleInUI }.reversed(),
                     key = { it.id }
                 ) { message ->
-                    ChatMessageItem(message)
+                    ChatMessageItem(
+                        message = message,
+                        component = component,
+                        isDeveloperModeEnabled = isDeveloperModeEnabled
+                    )
                 }
             }
 
@@ -166,12 +202,59 @@ fun ChatScreen(
             }
         }
 
+        // Source Modal
+        selectedCitationSource?.let { source ->
+            SourceModal(
+                citationDetail = source,
+                onDismiss = component::onHideSource
+            )
+        }
+
         LaunchedEffect(messages.size) {
             if (messages.isNotEmpty()) {
                 lazyListState.animateScrollToItem(0)
             }
         }
     }
+}
+
+@Composable
+private fun SourceModal(
+    citationDetail: org.oleg.ai.challenge.component.chat.CitationSourceDetail,
+    onDismiss: () -> Unit
+) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text("Source [${citationDetail.citation.index}]")
+                citationDetail.citation.sourceTitle?.let { title ->
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = citationDetail.chunkContent,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = onDismiss) {
+                Text("Close")
+            }
+        }
+    )
 }
 
 @Composable
@@ -282,7 +365,11 @@ private fun LoadingIndicator(mcpUiState: McpUiState = McpUiState()) {
 }
 
 @Composable
-private fun ChatMessageItem(message: ChatMessage) {
+private fun ChatMessageItem(
+    message: ChatMessage,
+    component: ChatComponent,
+    isDeveloperModeEnabled: Boolean
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth().padding(
@@ -295,10 +382,14 @@ private fun ChatMessageItem(message: ChatMessage) {
         Card(
             modifier = Modifier.wrapContentSize(),
             colors = CardDefaults.cardColors(
-                containerColor = if (message.isFromUser)
+                containerColor = if (message.isFromUser) {
                     MaterialTheme.colorScheme.primaryContainer
-                else
+                } else if (message.citations != null && message.citations.isNotEmpty()) {
+                    // RAG-powered messages have a distinct color
+                    MaterialTheme.colorScheme.tertiaryContainer
+                } else {
                     MaterialTheme.colorScheme.secondaryContainer
+                }
             )
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
@@ -308,6 +399,15 @@ private fun ChatMessageItem(message: ChatMessage) {
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(bottom = 4.dp)
                     ) {
+                        // RAG indicator
+                        if (message.citations != null && message.citations.isNotEmpty()) {
+                            Text(
+                                text = "🔍 RAG",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+
                         // Agent name badge (if sub-agent)
                         message.agentName?.let { agentId ->
                             if (agentId != "main") {
@@ -343,6 +443,69 @@ private fun ChatMessageItem(message: ChatMessage) {
                         content = message.text,
                         modifier = Modifier.align(if (message.isFromUser) Alignment.End else Alignment.Start)
                     )
+                }
+
+                // Citations display
+                if (message.citations != null && message.citations.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Sources:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                        )
+
+                        message.citations.forEach { citation ->
+                            androidx.compose.material3.AssistChip(
+                                onClick = {
+                                    // Get chunk content from retrieval trace
+                                    val chunkContent = message.retrievalTrace?.results
+                                        ?.getOrNull(citation.index - 1)?.chunk?.content
+                                        ?: "Content not available"
+                                    component.onShowSource(citation, chunkContent)
+                                },
+                                label = { Text("[${citation.index}]") }
+                            )
+                        }
+                    }
+                }
+
+                // Developer mode: Retrieval trace
+                if (isDeveloperModeEnabled && message.retrievalTrace != null) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "Retrieval Trace (Dev Mode):",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
+                        )
+                        Text(
+                            text = "Query: ${message.retrievalTrace.query}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
+                        )
+                        Text(
+                            text = "Retrieved: ${message.retrievalTrace.results.size} chunks (Top-${message.retrievalTrace.topK})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.6f)
+                        )
+                        message.retrievalTrace.results.take(3).forEachIndexed { idx, result ->
+                            Text(
+                                text = "  [${idx + 1}] score: ${String.format("%.3f", result.score)} - ${result.chunk.content.take(100)}...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
                 }
             }
         }

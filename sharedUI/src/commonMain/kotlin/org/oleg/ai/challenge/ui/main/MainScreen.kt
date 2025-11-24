@@ -20,6 +20,8 @@ import org.oleg.ai.challenge.component.main.MainComponent
 import org.oleg.ai.challenge.ui.agentcreation.AgentCreationScreen
 import org.oleg.ai.challenge.ui.chat.ChatScreen
 import org.oleg.ai.challenge.ui.planner.PlannerScreen
+import org.oleg.ai.challenge.ui.rag.DocumentManagementScreen
+import org.oleg.ai.challenge.ui.rag.StatisticsDashboardScreen
 
 /**
  * Main screen with split-screen layout.
@@ -53,7 +55,10 @@ fun MainScreen(
                 onChatClick = component::onSelectChat,
                 onDeleteChat = component::onDeleteChat,
                 onNavigateToMcp = component::onNavigateToMcp,
-                onNavigateToPlanner = component::onNavigateToPlanner
+                onNavigateToPlanner = component::onNavigateToPlanner,
+                onNavigateToDocuments = component::onNavigateToDocuments,
+                onNavigateToRagSettings = component::onNavigateToRagSettings,
+                onNavigateToStatistics = component::onNavigateToStatistics
             )
         }
 
@@ -89,6 +94,24 @@ fun MainScreen(
                     is MainComponent.RightPaneChild.Planner -> {
                         // Show planner mode screen
                         PlannerScreen(
+                            component = instance.component
+                        )
+                    }
+
+                    is MainComponent.RightPaneChild.Documents -> {
+                        DocumentManagementScreen(
+                            component = instance.component
+                        )
+                    }
+
+                    is MainComponent.RightPaneChild.RagSettings -> {
+                        org.oleg.ai.challenge.ui.rag.RagSettingsScreen(
+                            component = instance.component
+                        )
+                    }
+
+                    is MainComponent.RightPaneChild.Statistics -> {
+                        StatisticsDashboardScreen(
                             component = instance.component
                         )
                     }

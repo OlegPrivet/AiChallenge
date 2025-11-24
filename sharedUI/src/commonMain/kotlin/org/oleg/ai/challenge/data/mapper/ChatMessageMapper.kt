@@ -1,19 +1,44 @@
 package org.oleg.ai.challenge.data.mapper
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.oleg.ai.challenge.data.database.entity.MessageEntity
 import org.oleg.ai.challenge.data.model.ChatMessage
 import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.network.model.Usage
+import org.oleg.ai.challenge.domain.rag.orchestrator.Citation
+import org.oleg.ai.challenge.domain.rag.orchestrator.RetrievalTrace
 
 /**
  * Mapper for converting between ChatMessage domain model and MessageEntity.
  */
 object ChatMessageMapper {
 
+    private val json = Json {
+        ignoreUnknownKeys = true
+        prettyPrint = false
+    }
+
     /**
      * Convert MessageEntity to ChatMessage domain model.
      */
     fun MessageEntity.toDomain(): ChatMessage {
+        val citations = citationsJson?.let {
+            try {
+                json.decodeFromString<List<Citation>>(it)
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        val retrievalTrace = retrievalTraceJson?.let {
+            try {
+                json.decodeFromString<RetrievalTrace>(it)
+            } catch (e: Exception) {
+                null
+            }
+        }
+
         return ChatMessage(
             id = messageId,
             text = text,
@@ -32,7 +57,9 @@ object ChatMessageMapper {
                 )
             } else {
                 null
-            }
+            },
+            citations = citations,
+            retrievalTrace = retrievalTrace
         )
     }
 
@@ -41,6 +68,22 @@ object ChatMessageMapper {
      * Requires chatId parameter since ChatMessage doesn't store it.
      */
     fun ChatMessage.toEntity(chatId: Long): MessageEntity {
+        val citationsJson = citations?.let {
+            try {
+                json.encodeToString(it)
+            } catch (e: Exception) {
+                null
+            }
+        }
+
+        val retrievalTraceJson = retrievalTrace?.let {
+            try {
+                json.encodeToString(it)
+            } catch (e: Exception) {
+                null
+            }
+        }
+
         return MessageEntity(
             chatId = chatId,
             messageId = id,
@@ -54,7 +97,9 @@ object ChatMessageMapper {
             modelUsed = modelUsed,
             usagePromptTokens = usage?.promptTokens,
             usageCompletionTokens = usage?.completionTokens,
-            usageTotalTokens = usage?.totalTokens
+            usageTotalTokens = usage?.totalTokens,
+            citationsJson = citationsJson,
+            retrievalTraceJson = retrievalTraceJson
         )
     }
 

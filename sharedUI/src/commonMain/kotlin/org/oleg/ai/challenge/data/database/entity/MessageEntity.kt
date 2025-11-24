@@ -67,5 +67,11 @@ data class MessageEntity(
     val usageCompletionTokens: Int? = null,
 
     /** Usage statistics - total tokens */
-    val usageTotalTokens: Int? = null
+    val usageTotalTokens: Int? = null,
+
+    /** JSON string of citations from RAG retrieval (serialized List<Citation>) */
+    val citationsJson: String? = null,
+
+    /** JSON string of retrieval trace for developer mode (serialized RetrievalTrace) */
+    val retrievalTraceJson: String? = null
 )

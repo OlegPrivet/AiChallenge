@@ -16,8 +16,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,6 +49,9 @@ import org.oleg.ai.challenge.data.model.Conversation
  * @param onDeleteChat Callback when user deletes a chat
  * @param onNavigateToMcp Callback when user clicks "MCP Tools"
  * @param onNavigateToPlanner Callback when user clicks "Planner Mode"
+ * @param onNavigateToDocuments Callback when user clicks "Documents"
+ * @param onNavigateToRagSettings Callback when user clicks "RAG Settings"
+ * @param onNavigateToStatistics Callback when user clicks "Statistics"
  * @param modifier Modifier for the panel
  */
 @Composable
@@ -58,6 +63,9 @@ fun ChatListPanel(
     onDeleteChat: (Long) -> Unit,
     onNavigateToMcp: () -> Unit,
     onNavigateToPlanner: () -> Unit,
+    onNavigateToDocuments: () -> Unit,
+    onNavigateToRagSettings: () -> Unit,
+    onNavigateToStatistics: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -106,6 +114,51 @@ fun ChatListPanel(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text("Planner Mode")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // "Documents" button
+        Button(
+            onClick = onNavigateToDocuments,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Add,
+                contentDescription = "Documents"
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Documents")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // "RAG Settings" button
+        Button(
+            onClick = onNavigateToRagSettings,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Default.Settings,
+                contentDescription = "RAG Settings"
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("RAG Settings")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // "Statistics" button
+        Button(
+            onClick = onNavigateToStatistics,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = "Statistics"
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Statistics")
         }
 
         Spacer(modifier = Modifier.height(16.dp))

@@ -13,5 +13,6 @@ data class Conversation @OptIn(ExperimentalTime::class) constructor(
     val chatId: Long = 0,
     val chatName: String = "New chat",
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
-    val updatedAt: Long = Clock.System.now().toEpochMilliseconds()
+    val updatedAt: Long = Clock.System.now().toEpochMilliseconds(),
+    val isRagEnabled: Boolean = false
 )

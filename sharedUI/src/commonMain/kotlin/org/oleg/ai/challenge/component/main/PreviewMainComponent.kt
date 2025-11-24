@@ -19,4 +19,7 @@ class PreviewMainComponent : MainComponent {
     override fun onBackFromAgentCreation() = Unit
     override fun onNavigateToMcp() = Unit
     override fun onNavigateToPlanner() = Unit
+    override fun onNavigateToDocuments() = Unit
+    override fun onNavigateToRagSettings() = Unit
+    override fun onNavigateToStatistics() = Unit
 }

@@ -30,6 +30,9 @@ interface MainComponent {
     fun onBackFromAgentCreation()  // Called when user cancels agent creation
     fun onNavigateToMcp()  // Navigate to MCP connection screen
     fun onNavigateToPlanner()  // Navigate to Planner Mode screen
+    fun onNavigateToDocuments() // Navigate to Document Management
+    fun onNavigateToRagSettings() // Navigate to RAG settings
+    fun onNavigateToStatistics() // Navigate to Statistics Dashboard
 
     companion object {
         const val NO_SELECTION = -1L
@@ -58,5 +61,20 @@ interface MainComponent {
          * Empty/placeholder state (no chat selected).
          */
         data object Empty : RightPaneChild()
+
+        /**
+         * Document management screen.
+         */
+        data class Documents(val component: org.oleg.ai.challenge.component.rag.DocumentManagementComponent) : RightPaneChild()
+
+        /**
+         * RAG settings screen.
+         */
+        data class RagSettings(val component: org.oleg.ai.challenge.component.rag.RagSettingsComponent) : RightPaneChild()
+
+        /**
+         * Statistics dashboard screen.
+         */
+        data class Statistics(val component: org.oleg.ai.challenge.component.rag.StatisticsDashboardComponent) : RightPaneChild()
     }
 }

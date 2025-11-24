@@ -67,6 +67,17 @@ class DefaultChatComponent(
     private val _mcpUiState = MutableValue(McpUiState())
     override val mcpUiState: Value<McpUiState> = _mcpUiState
 
+    // RAG-related state
+    private val _isRagEnabled = MutableValue(false)
+    override val isRagEnabled: Value<Boolean> = _isRagEnabled
+
+    private var _selectedCitationSource: CitationSourceDetail? = null
+
+    private val _isDeveloperModeEnabled = MutableValue(false)
+    override val isDeveloperModeEnabled: Value<Boolean> = _isDeveloperModeEnabled
+
+    override fun getSelectedCitationSource(): CitationSourceDetail? = _selectedCitationSource
+
     init {
         // Observe MCP UI state changes from the orchestrator
         scope.launch {
@@ -148,6 +159,13 @@ class DefaultChatComponent(
      */
     private suspend fun loadFromRepository(chatId: Long) {
         try {
+            // Load chat entity to get RAG state
+            val conversation = chatRepository.getConversationById(chatId)
+            if (conversation != null) {
+                _isRagEnabled.value = conversation.isRagEnabled
+                logger.d { "Loaded chat $chatId with RAG mode: ${conversation.isRagEnabled}" }
+            }
+
             // Load agents
             val agents = chatRepository.getAgentsForChatSuspend(chatId)
             if (agents.isEmpty()) {
@@ -357,6 +375,7 @@ class DefaultChatComponent(
                     model = currentAgent.model,
                     temperature = currentAgent.temperature,
                     toolName = "",
+                    isRagEnabled = _isRagEnabled.value
                 )
 
                 when (result) {
@@ -370,7 +389,9 @@ class DefaultChatComponent(
                             agentName = currentAgent.name,
                             agentId = currentAgentId,
                             modelUsed = result.model,
-                            usage = result.usage
+                            usage = result.usage,
+                            citations = result.citations,
+                            retrievalTrace = result.retrievalTrace
                         )
                         allMessages.add(aiMessage)
 
@@ -698,5 +719,38 @@ IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FO
             )
         )
         chatRepository.saveMessages(chatId!!, allMessages)
+    }
+
+    // RAG-related methods
+
+    override fun onToggleRagMode(enabled: Boolean) {
+        _isRagEnabled.value = enabled
+
+        // Save to repository if chatId exists
+        if (chatId != null) {
+            scope.launch {
+                try {
+                    chatRepository.updateChatRagMode(chatId, enabled)
+                    logger.d { "Updated RAG mode for chat $chatId: $enabled" }
+                } catch (e: Exception) {
+                    logger.e(e) { "Failed to update RAG mode for chat $chatId" }
+                }
+            }
+        }
+    }
+
+    override fun onShowSource(citation: org.oleg.ai.challenge.domain.rag.orchestrator.Citation, chunkContent: String) {
+        _selectedCitationSource = CitationSourceDetail(
+            citation = citation,
+            chunkContent = chunkContent
+        )
+    }
+
+    override fun onHideSource() {
+        _selectedCitationSource = null
+    }
+
+    override fun onToggleDeveloperMode(enabled: Boolean) {
+        _isDeveloperModeEnabled.value = enabled
     }
 }

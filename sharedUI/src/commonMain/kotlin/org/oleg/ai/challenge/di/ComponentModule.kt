@@ -7,6 +7,9 @@ import org.oleg.ai.challenge.component.chat.DefaultChatComponent
 import org.oleg.ai.challenge.component.main.DefaultMainComponent
 import org.oleg.ai.challenge.component.mcp.DefaultMcpConnectionComponent
 import org.oleg.ai.challenge.component.planner.DefaultPlannerComponent
+import org.oleg.ai.challenge.component.rag.DefaultDocumentManagementComponent
+import org.oleg.ai.challenge.component.rag.DefaultRagSettingsComponent
+import org.oleg.ai.challenge.component.rag.DefaultStatisticsDashboardComponent
 import org.oleg.ai.challenge.component.root.DefaultRootComponent
 import org.oleg.ai.challenge.component.root.RootComponent
 import org.oleg.ai.challenge.data.AgentManager
@@ -22,6 +25,8 @@ val componentModule = module {
         val mcpClientService = get<org.oleg.ai.challenge.data.network.service.McpClientService>()
         val mcpServerRepository = get<org.oleg.ai.challenge.data.repository.McpServerRepository>()
         val chatOrchestratorService = get<org.oleg.ai.challenge.data.network.service.ChatOrchestratorService>()
+        val knowledgeBaseRepository = get<org.oleg.ai.challenge.domain.rag.repository.KnowledgeBaseRepository>()
+        val ingestionRepository = get<org.oleg.ai.challenge.data.rag.repository.DocumentIngestionRepository>()
 
         DefaultRootComponent(
             componentContext = componentContext,
@@ -30,6 +35,31 @@ val componentModule = module {
                     componentContext = context,
                     chatRepository = chatRepository,
                     onNavigateToMcp = onNavigateToMcp,
+                    documentManagementComponentFactory = { docContext, onBack ->
+                        DefaultDocumentManagementComponent(
+                            componentContext = docContext,
+                            knowledgeBaseRepository = knowledgeBaseRepository,
+                            ingestionRepository = ingestionRepository,
+                            defaultChunkingStrategy = get<org.oleg.ai.challenge.domain.rag.chunking.RecursiveChunkingStrategy>(),
+                            filePickerService = get<org.oleg.ai.challenge.data.file.FilePickerService>(),
+                            onBack = onBack
+                        )
+                    },
+                    ragSettingsComponentFactory = { settingsContext, onBack ->
+                        DefaultRagSettingsComponent(
+                            componentContext = settingsContext,
+                            ragSettingsService = get<org.oleg.ai.challenge.data.settings.RagSettingsService>(),
+                            onBack = onBack
+                        )
+                    },
+                    statisticsDashboardComponentFactory = { statsContext, onBack ->
+                        DefaultStatisticsDashboardComponent(
+                            componentContext = statsContext,
+                            knowledgeBaseRepository = knowledgeBaseRepository,
+                            queryHistoryRepository = get<org.oleg.ai.challenge.data.repository.QueryHistoryRepository>(),
+                            onBack = onBack
+                        )
+                    },
                     agentCreationComponentFactory = { agentCreationContext, onAgentsCreated, onNavigateBack ->
                         DefaultAgentCreationComponent(
                             componentContext = agentCreationContext,

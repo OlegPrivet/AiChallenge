@@ -2,6 +2,8 @@ package org.oleg.ai.challenge.data.model
 
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import org.oleg.ai.challenge.domain.rag.orchestrator.Citation
+import org.oleg.ai.challenge.domain.rag.orchestrator.RetrievalTrace
 
 /**
  * Domain model representing a chat message.
@@ -22,7 +24,13 @@ data class ChatMessage @OptIn(ExperimentalTime::class) constructor(
     val usage: org.oleg.ai.challenge.data.network.model.Usage? = null,
     val mcpName: String? = null,
     val isMcpSystemPrompt: Boolean = false,
-    val isMcpIntermediate: Boolean = false
+    val isMcpIntermediate: Boolean = false,
+
+    /** Citations from RAG retrieval (if RAG was used) */
+    val citations: List<Citation>? = null,
+
+    /** Retrieval trace for developer mode (if RAG was used) */
+    val retrievalTrace: RetrievalTrace? = null
 ) {
     companion object {
         /**

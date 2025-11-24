@@ -78,6 +78,9 @@ kotlin {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutines.swing)
             implementation(libs.ktor.client.okhttp)
+            implementation(libs.lucene.core)
+            implementation(libs.lucene.analyzers.common)
+            implementation(libs.lucene.queryparser)
         }
 
         iosMain.dependencies {
@@ -107,6 +110,25 @@ buildConfig {
     buildConfigField("String", "OPENROUTER_API_KEY", "\"$apiKey\"")
     buildConfigField("String", "OPENROUTER_BASE_URL", "\"https://openrouter.ai/api/v1/\"")
     buildConfigField("String", "DEFAULT_MODEL", "\"openai/gpt-4.1\"")
+    val ollamaBaseUrl = project.findProperty("OLLAMA_BASE_URL") as? String
+        ?: System.getenv("OLLAMA_BASE_URL")
+        ?: "http://localhost:11434/api/"
+    val chromaBaseUrl = project.findProperty("CHROMA_BASE_URL") as? String
+        ?: System.getenv("CHROMA_BASE_URL")
+        ?: "http://localhost:8000/api/v1/"
+    val defaultEmbeddingModel = project.findProperty("EMBEDDING_MODEL") as? String
+        ?: System.getenv("EMBEDDING_MODEL")
+        ?: "nomic-embed-text"
+    buildConfigField("String", "OLLAMA_BASE_URL", "\"$ollamaBaseUrl\"")
+    buildConfigField("String", "CHROMA_BASE_URL", "\"$chromaBaseUrl\"")
+    buildConfigField("String", "DEFAULT_EMBEDDING_MODEL", "\"$defaultEmbeddingModel\"")
+    buildConfigField("Double", "DEFAULT_VECTOR_WEIGHT", "1.0")
+    buildConfigField("Double", "DEFAULT_LEXICAL_WEIGHT", "1.0")
+
+    val luceneIndexPath = project.findProperty("LUCENE_INDEX_PATH") as? String
+        ?: System.getenv("LUCENE_INDEX_PATH")
+        ?: "./data/lucene-bm25-index"
+    buildConfigField("String", "LUCENE_INDEX_PATH", "\"$luceneIndexPath\"")
 }
 
 room {
@@ -122,4 +144,3 @@ dependencies {
         add("kspIosSimulatorArm64", this)
     }
 }
-

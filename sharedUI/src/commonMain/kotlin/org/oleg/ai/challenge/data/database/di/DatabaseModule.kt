@@ -8,8 +8,12 @@ import org.oleg.ai.challenge.data.database.AppDatabase
 import org.oleg.ai.challenge.data.database.getDatabaseBuilder
 import org.oleg.ai.challenge.data.repository.ChatRepository
 import org.oleg.ai.challenge.data.repository.DefaultChatRepository
+import org.oleg.ai.challenge.data.repository.DefaultKnowledgeBaseRepository
 import org.oleg.ai.challenge.data.repository.DefaultMcpServerRepository
+import org.oleg.ai.challenge.data.repository.DefaultQueryHistoryRepository
 import org.oleg.ai.challenge.data.repository.McpServerRepository
+import org.oleg.ai.challenge.data.repository.QueryHistoryRepository
+import org.oleg.ai.challenge.domain.rag.repository.KnowledgeBaseRepository
 
 /**
  * Koin module for database and repository dependencies.
@@ -30,6 +34,8 @@ val databaseModule = module {
     single { get<AppDatabase>().agentDao() }
     single { get<AppDatabase>().messageDao() }
     single { get<AppDatabase>().mcpServerDao() }
+    single { get<AppDatabase>().documentDao() }
+    single { get<AppDatabase>().queryHistoryDao() }
 
     // Provide repositories
     single<ChatRepository> {
@@ -43,6 +49,18 @@ val databaseModule = module {
     single<McpServerRepository> {
         DefaultMcpServerRepository(
             mcpServerDao = get(),
+        )
+    }
+
+    single<KnowledgeBaseRepository> {
+        DefaultKnowledgeBaseRepository(
+            documentDao = get()
+        )
+    }
+
+    single<QueryHistoryRepository> {
+        DefaultQueryHistoryRepository(
+            queryHistoryDao = get()
         )
     }
 }

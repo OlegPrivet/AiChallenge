@@ -10,7 +10,9 @@ import org.oleg.ai.challenge.data.network.HttpClientFactory
 import org.oleg.ai.challenge.data.network.service.ChatApiService
 import org.oleg.ai.challenge.data.network.service.ChatApiServiceImpl
 import org.oleg.ai.challenge.data.network.service.ChatOrchestratorService
+import org.oleg.ai.challenge.data.network.service.ChromaClient
 import org.oleg.ai.challenge.data.network.service.McpClientService
+import org.oleg.ai.challenge.data.network.service.OllamaEmbeddingClient
 import org.oleg.ai.challenge.data.network.service.ToolValidationService
 
 /**
@@ -55,7 +57,24 @@ val networkModule: Module = module {
             chatApiService = get(),
             mcpClientService = get(),
             toolValidationService = get(),
+            ragOrchestrator = getOrNull(), // Optional: may not be available if RAG is not initialized
             logger = Logger.withTag("ChatOrchestratorService")
+        )
+    }
+
+    single {
+        OllamaEmbeddingClient(
+            httpClient = get(),
+            baseUrl = BuildConfig.OLLAMA_BASE_URL,
+            logger = Logger.withTag("OllamaEmbeddingClient")
+        )
+    }
+
+    single {
+        ChromaClient(
+            httpClient = get(),
+            baseUrl = BuildConfig.CHROMA_BASE_URL,
+            logger = Logger.withTag("ChromaClient")
         )
     }
 }

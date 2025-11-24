@@ -16,7 +16,8 @@ object ConversationMapper {
             chatId = chatId,
             chatName = chatName,
             createdAt = createdAt,
-            updatedAt = updatedAt
+            updatedAt = updatedAt,
+            isRagEnabled = isRagEnabled
         )
     }
 
@@ -28,7 +29,8 @@ object ConversationMapper {
             chatId = chatId,
             chatName = chatName,
             createdAt = createdAt,
-            updatedAt = updatedAt
+            updatedAt = updatedAt,
+            isRagEnabled = isRagEnabled
         )
     }
 

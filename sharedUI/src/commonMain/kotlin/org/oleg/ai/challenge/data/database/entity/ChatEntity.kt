@@ -15,5 +15,8 @@ data class ChatEntity @OptIn(ExperimentalTime::class) constructor(
     val chatId: Long = 0,
     val chatName: String = "New chat",
     val createdAt: Long = Clock.System.now().toEpochMilliseconds(),
-    val updatedAt: Long = Clock.System.now().toEpochMilliseconds()
+    val updatedAt: Long = Clock.System.now().toEpochMilliseconds(),
+
+    /** Whether RAG mode is enabled for this chat */
+    val isRagEnabled: Boolean = false
 )

@@ -4,6 +4,7 @@ import com.arkivanov.decompose.value.Value
 import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.ChatMessage
 import org.oleg.ai.challenge.data.model.McpUiState
+import org.oleg.ai.challenge.domain.rag.orchestrator.Citation
 
 interface ChatComponent {
     val messages: Value<List<ChatMessage>>
@@ -16,10 +17,31 @@ interface ChatComponent {
     val currentTemperature: Value<Float>  // Temperature of the currently selected agent
     val mcpUiState: Value<McpUiState>
 
+    // RAG-related state
+    val isRagEnabled: Value<Boolean>  // Whether RAG mode is enabled for this chat
+    val isDeveloperModeEnabled: Value<Boolean>  // Whether developer mode is enabled
+
+    // For showing citation modal (nullable OK here, handled separately)
+    fun getSelectedCitationSource(): CitationSourceDetail?
+
     fun onTextChanged(text: String)
     fun onSendMessage()
     fun onSummarizeConversation()
     fun onAgentSelected(agentId: String?)
     fun onModelChanged(model: String)  // Change model for current agent
     fun onTemperatureChanged(temperature: Float)  // Change temperature for current agent
+
+    // RAG-related actions
+    fun onToggleRagMode(enabled: Boolean)  // Toggle RAG mode for this chat
+    fun onShowSource(citation: Citation, chunkContent: String)  // Show citation source in modal
+    fun onHideSource()  // Hide citation source modal
+    fun onToggleDeveloperMode(enabled: Boolean)  // Toggle developer mode
 }
+
+/**
+ * Detailed citation source information for display in modal.
+ */
+data class CitationSourceDetail(
+    val citation: Citation,
+    val chunkContent: String
+)

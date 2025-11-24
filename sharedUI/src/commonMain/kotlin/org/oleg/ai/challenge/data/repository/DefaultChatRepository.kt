@@ -155,4 +155,13 @@ class DefaultChatRepository(
             }
         }
     }
+
+    @OptIn(ExperimentalTime::class)
+    override suspend fun updateChatRagMode(chatId: Long, isRagEnabled: Boolean) {
+        chatDao.updateChatRagMode(
+            chatId = chatId,
+            isRagEnabled = isRagEnabled,
+            updatedAt = Clock.System.now().toEpochMilliseconds()
+        )
+    }
 }

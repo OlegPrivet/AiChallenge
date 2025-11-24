@@ -1,5 +1,15 @@
 package org.oleg.ai.challenge.data.model
 
+import org.oleg.ai.challenge.domain.rag.agent.Conflict
+
+/**
+ * Information about detected conflicts in RAG results that should be shown to the user.
+ */
+data class ConflictAlert(
+    val conflicts: List<Conflict>,
+    val messageId: String
+)
+
 /**
  * UI state for MCP (Model Context Protocol) operations in the chat.
  *
@@ -30,7 +40,12 @@ data class McpUiState(
     /**
      * Number of validation retry attempts made.
      */
-    val retryCount: Int = 0
+    val retryCount: Int = 0,
+
+    /**
+     * Conflict alert to be shown to the user, if any.
+     */
+    val conflictAlert: ConflictAlert? = null
 ) {
     companion object {
         /**

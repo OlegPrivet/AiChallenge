@@ -122,4 +122,12 @@ interface ChatRepository {
      * @param chatId The chat ID
      */
     suspend fun updateChatNameFromFirstMessage(chatId: Long)
+
+    /**
+     * Update the RAG mode for a specific chat.
+     *
+     * @param chatId The chat ID to update
+     * @param isRagEnabled Whether RAG mode should be enabled
+     */
+    suspend fun updateChatRagMode(chatId: Long, isRagEnabled: Boolean)
 }

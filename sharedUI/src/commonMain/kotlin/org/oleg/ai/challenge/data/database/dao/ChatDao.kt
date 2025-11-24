@@ -62,4 +62,10 @@ interface ChatDao {
      */
     @Query("UPDATE chats SET chatName = :chatName, updatedAt = :updatedAt WHERE chatId = :chatId")
     suspend fun updateChatName(chatId: Long, chatName: String, updatedAt: Long)
+
+    /**
+     * Update RAG mode for a chat.
+     */
+    @Query("UPDATE chats SET isRagEnabled = :isRagEnabled, updatedAt = :updatedAt WHERE chatId = :chatId")
+    suspend fun updateChatRagMode(chatId: Long, isRagEnabled: Boolean, updatedAt: Long)
 }

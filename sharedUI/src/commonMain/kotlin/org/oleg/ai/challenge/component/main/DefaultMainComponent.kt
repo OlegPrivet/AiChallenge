@@ -18,6 +18,9 @@ import kotlinx.serialization.Serializable
 import org.oleg.ai.challenge.component.agentcreation.AgentCreationComponent
 import org.oleg.ai.challenge.component.chat.ChatComponent
 import org.oleg.ai.challenge.component.planner.PlannerComponent
+import org.oleg.ai.challenge.component.rag.DocumentManagementComponent
+import org.oleg.ai.challenge.component.rag.RagSettingsComponent
+import org.oleg.ai.challenge.component.rag.StatisticsDashboardComponent
 import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.Conversation
 import org.oleg.ai.challenge.data.repository.ChatRepository
@@ -35,12 +38,33 @@ private sealed class RightPaneConfig {
 
     @Serializable
     data object PlannerConfig : RightPaneConfig()
+
+    @Serializable
+    data object DocumentsConfig : RightPaneConfig()
+
+    @Serializable
+    data object RagSettingsConfig : RightPaneConfig()
+
+    @Serializable
+    data object StatisticsConfig : RightPaneConfig()
 }
 
 class DefaultMainComponent(
     componentContext: ComponentContext,
     private val chatRepository: ChatRepository,
     private val onNavigateToMcp: () -> Unit,
+    private val documentManagementComponentFactory: (
+        componentContext: ComponentContext,
+        onNavigateBack: () -> Unit
+    ) -> DocumentManagementComponent,
+    private val ragSettingsComponentFactory: (
+        componentContext: ComponentContext,
+        onNavigateBack: () -> Unit
+    ) -> RagSettingsComponent,
+    private val statisticsDashboardComponentFactory: (
+        componentContext: ComponentContext,
+        onNavigateBack: () -> Unit
+    ) -> StatisticsDashboardComponent,
     private val agentCreationComponentFactory: (
         componentContext: ComponentContext,
         onAgentsCreated: (mainAgent: Agent, subAgents: List<Agent>) -> Unit,
@@ -96,6 +120,21 @@ class DefaultMainComponent(
             is RightPaneConfig.PlannerConfig -> {
                 MainComponent.RightPaneChild.Planner(
                     plannerComponentFactory(componentContext, ::handleBackFromPlanner)
+                )
+            }
+            is RightPaneConfig.DocumentsConfig -> {
+                MainComponent.RightPaneChild.Documents(
+                    documentManagementComponentFactory(componentContext, ::handleBackFromDocuments)
+                )
+            }
+            is RightPaneConfig.RagSettingsConfig -> {
+                MainComponent.RightPaneChild.RagSettings(
+                    ragSettingsComponentFactory(componentContext, ::handleBackFromRagSettings)
+                )
+            }
+            is RightPaneConfig.StatisticsConfig -> {
+                MainComponent.RightPaneChild.Statistics(
+                    statisticsDashboardComponentFactory(componentContext, ::handleBackFromStatistics)
                 )
             }
         }
@@ -166,6 +205,21 @@ class DefaultMainComponent(
         slotNavigation.activate(RightPaneConfig.PlannerConfig)
     }
 
+    override fun onNavigateToDocuments() {
+        _selectedChatId.value = MainComponent.NO_SELECTION
+        slotNavigation.activate(RightPaneConfig.DocumentsConfig)
+    }
+
+    override fun onNavigateToRagSettings() {
+        _selectedChatId.value = MainComponent.NO_SELECTION
+        slotNavigation.activate(RightPaneConfig.RagSettingsConfig)
+    }
+
+    override fun onNavigateToStatistics() {
+        _selectedChatId.value = MainComponent.NO_SELECTION
+        slotNavigation.activate(RightPaneConfig.StatisticsConfig)
+    }
+
     /**
      * Handle agents being created for the pending chat.
      */
@@ -201,6 +255,18 @@ class DefaultMainComponent(
      * Handle navigation back from planner.
      */
     private fun handleBackFromPlanner() {
+        slotNavigation.dismiss()
+    }
+
+    private fun handleBackFromDocuments() {
+        slotNavigation.dismiss()
+    }
+
+    private fun handleBackFromRagSettings() {
+        slotNavigation.dismiss()
+    }
+
+    private fun handleBackFromStatistics() {
         slotNavigation.dismiss()
     }
 }
