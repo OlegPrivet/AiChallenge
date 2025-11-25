@@ -76,8 +76,8 @@ class DocumentIngestionRepository(
         )
 
         knowledgeBaseRepository.upsertDocument(updatedDocument, enrichedChunks)
-//        vectorStore.upsert(updatedDocument, enrichedChunks)
-//        lexicalSearchService.index(updatedDocument, enrichedChunks)
+        vectorStore.upsert(updatedDocument, enrichedChunks)
+        lexicalSearchService.index(updatedDocument, enrichedChunks)
         logger.d { "Document=${document.id} ingested with ${enrichedChunks.size} chunks" }
     }
 
@@ -109,8 +109,8 @@ class DocumentIngestionRepository(
             )
 
             knowledgeBaseRepository.upsertDocument(updatedDocument, updatedChunks)
-//            vectorStore.upsert(updatedDocument, updatedChunks)
-//            lexicalSearchService.index(updatedDocument, updatedChunks)
+            vectorStore.upsert(updatedDocument, updatedChunks)
+            lexicalSearchService.index(updatedDocument, updatedChunks)
         }
     }
 
@@ -132,8 +132,8 @@ class DocumentIngestionRepository(
 
     suspend fun deleteDocument(documentId: String) {
         logger.d { "Deleting document=$documentId from knowledge base and vector store" }
-//        vectorStore.delete(documentId)
-//        lexicalSearchService.delete(documentId)
+        vectorStore.delete(documentId)
+        lexicalSearchService.delete(documentId)
         knowledgeBaseRepository.deleteDocument(documentId)
     }
 

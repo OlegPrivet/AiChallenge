@@ -5,7 +5,6 @@ import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.logging.DEFAULT
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
@@ -29,6 +28,7 @@ object HttpClientFactory {
      * @param logLevel The logging level (default: LogLevel.INFO)
      * @return Configured HttpClient instance
      */
+    private val customLogger: co.touchlab.kermit.Logger = co.touchlab.kermit.Logger.withTag("HttpClient")
     fun create(
         apiKey: String,
         enableLogging: Boolean = true,
@@ -43,7 +43,11 @@ object HttpClientFactory {
             // Logging Plugin
             if (enableLogging) {
                 install(Logging) {
-                    logger = Logger.DEFAULT
+                    logger = object : Logger {
+                        override fun log(message: String) {
+                            customLogger.d(message)
+                        }
+                    }
                     level = logLevel
                     sanitizeHeader { header -> header == HttpHeaders.Authorization }
                 }

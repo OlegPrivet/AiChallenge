@@ -45,7 +45,13 @@ class ChromaVectorStore(
             )
         }
 
-        client.addEmbeddings(collectionId, records)
+        client.upsert(
+            collectionId = collectionId,
+            ids = records.map { it.id },
+            embeddings = records.map { it.embedding },
+            documents = records.map { it.document },
+            metadatas = records.map { it.metadata }
+        )
         logger.d { "Upserted ${records.size} chunks into Chroma collection=$collectionName" }
     }
 
@@ -56,7 +62,12 @@ class ChromaVectorStore(
         collectionName: String = defaultCollection
     ): List<VectorMatch> = withContext(dispatcher) {
         val collectionId = ensureCollectionId(collectionName, null)
-        val response = client.query(collectionId, embedding, topK, where = filters.ifEmpty { null })
+        val response = client.query(
+            collectionId = collectionId,
+            queryEmbeddings = listOf(embedding),
+            nResults = topK,
+            where = filters.ifEmpty { null }
+        )
 
         val ids = response.ids.firstOrNull().orEmpty()
         val metadatas = response.metadatas?.firstOrNull().orEmpty()
@@ -81,7 +92,10 @@ class ChromaVectorStore(
         collectionName: String = defaultCollection
     ) = withContext(dispatcher) {
         val collectionId = ensureCollectionId(collectionName, null)
-        client.deleteByDocumentId(collectionId, documentId)
+        client.delete(
+            collectionId = collectionId,
+            where = mapOf("documentId" to documentId)
+        )
         logger.d { "Deleted vectors for document=$documentId in collection=$collectionName" }
     }
 
@@ -90,7 +104,7 @@ class ChromaVectorStore(
         document: Document?
     ): String {
         collectionCache[name]?.let { return it }
-        val collection = client.ensureCollection(
+        val collection = client.getOrCreateCollection(
             name = name,
             metadata = document?.metadata
         )

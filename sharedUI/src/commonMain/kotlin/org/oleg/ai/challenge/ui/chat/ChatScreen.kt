@@ -221,7 +221,7 @@ fun ChatScreen(
 @Composable
 private fun SourceModal(
     citationDetail: org.oleg.ai.challenge.component.chat.CitationSourceDetail,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
 ) {
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
@@ -337,11 +337,13 @@ private fun LoadingIndicator(mcpUiState: McpUiState = McpUiState()) {
                                     mcpUiState.currentToolName?.let { "Calling tool: $it" }
                                         ?: "Invoking MCP tool..."
                                 }
+
                                 McpProcessingPhase.GeneratingFinalResponse -> "Generating response..."
                                 McpProcessingPhase.Retrying -> "Retrying (${mcpUiState.retryCount})..."
                                 McpProcessingPhase.Idle -> "MCP processing..."
                             }
                         }
+
                         else -> "AI is thinking..."
                     }
 
@@ -368,7 +370,7 @@ private fun LoadingIndicator(mcpUiState: McpUiState = McpUiState()) {
 private fun ChatMessageItem(
     message: ChatMessage,
     component: ChatComponent,
-    isDeveloperModeEnabled: Boolean
+    isDeveloperModeEnabled: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -500,7 +502,7 @@ private fun ChatMessageItem(
                         )
                         message.retrievalTrace.results.take(3).forEachIndexed { idx, result ->
                             Text(
-                                text = "  [${idx + 1}] score: ${String.format("%.3f", result.score)} - ${result.chunk.content.take(100)}...",
+                                text = "  [${idx + 1}] score: ${(result.score * 1000).toInt() / 1000.0} - ${result.chunk.content.take(100)}...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.5f)
                             )
@@ -515,7 +517,7 @@ private fun ChatMessageItem(
 @Composable
 private fun TokenUsageDisplay(
     usage: Usage,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier,
