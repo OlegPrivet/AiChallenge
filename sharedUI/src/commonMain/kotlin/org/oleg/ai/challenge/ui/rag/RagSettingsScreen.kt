@@ -192,6 +192,72 @@ fun RagSettingsScreen(
             }
         }
 
+        // Reranking Settings Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "Hybrid Reranking",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Text(
+                    text = "Improve search accuracy by combining BM25 and semantic similarity",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                SettingSwitch(
+                    title = "Enable Reranker",
+                    description = "Use hybrid scoring to rerank search results",
+                    checked = state.enableReranker,
+                    onCheckedChange = component::updateEnableReranker
+                )
+
+                if (state.enableReranker) {
+                    SettingSlider(
+                        title = "BM25 Weight",
+                        description = "Weight for lexical/keyword matching (${"%.2f".format(state.bm25Weight)})",
+                        value = state.bm25Weight,
+                        valueRange = RagSettings.MIN_RERANKER_WEIGHT..RagSettings.MAX_RERANKER_WEIGHT,
+                        onValueChange = component::updateBm25Weight
+                    )
+
+                    SettingSlider(
+                        title = "Semantic Weight",
+                        description = "Weight for semantic similarity (${"%.2f".format(state.semanticWeight)})",
+                        value = state.semanticWeight,
+                        valueRange = RagSettings.MIN_RERANKER_WEIGHT..RagSettings.MAX_RERANKER_WEIGHT,
+                        onValueChange = component::updateSemanticWeight
+                    )
+
+                    val totalWeight = state.bm25Weight + state.semanticWeight
+                    if (totalWeight != 1.0f) {
+                        Text(
+                            text = "Note: Weights will be normalized (total: ${"%.2f".format(totalWeight)})",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
+
+                    SettingSlider(
+                        title = "Relevance Threshold",
+                        description = "Minimum reranked score to keep results (${"%.2f".format(state.rerankerThreshold)})",
+                        value = state.rerankerThreshold,
+                        valueRange = RagSettings.MIN_RERANKER_THRESHOLD..RagSettings.MAX_RERANKER_THRESHOLD,
+                        onValueChange = component::updateRerankerThreshold
+                    )
+                }
+            }
+        }
+
         // Reset Button
         Button(
             onClick = component::resetToDefaults,
@@ -271,6 +337,10 @@ private fun RagSettingsScreenPreview() {
         override fun updateEnableHybridSearch(enabled: Boolean) {}
         override fun updateEnableAgenticRag(enabled: Boolean) {}
         override fun updateEnableExternalTools(enabled: Boolean) {}
+        override fun updateEnableReranker(enabled: Boolean) {}
+        override fun updateRerankerThreshold(value: Float) {}
+        override fun updateBm25Weight(value: Float) {}
+        override fun updateSemanticWeight(value: Float) {}
         override fun resetToDefaults() {}
         override fun onBack() {}
     }

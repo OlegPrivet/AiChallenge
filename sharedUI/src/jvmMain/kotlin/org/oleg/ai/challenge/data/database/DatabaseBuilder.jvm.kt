@@ -2,6 +2,7 @@ package org.oleg.ai.challenge.data.database
 
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import org.oleg.ai.challenge.data.database.migrations.MIGRATION_1_2
 import java.io.File
 
 /**
@@ -16,5 +17,5 @@ actual fun getDatabaseBuilder(): RoomDatabase.Builder<AppDatabase> {
 
     return Room.databaseBuilder<AppDatabase>(
         name = dbFile.absolutePath
-    )
+    ).addMigrations(MIGRATION_1_2)
 }

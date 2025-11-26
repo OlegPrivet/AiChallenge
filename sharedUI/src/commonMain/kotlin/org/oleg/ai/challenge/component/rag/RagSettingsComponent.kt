@@ -10,7 +10,11 @@ data class RagSettingsState(
     val chunkingStrategy: String = "recursive",
     val enableHybridSearch: Boolean = false,
     val enableAgenticRag: Boolean = true,
-    val enableExternalTools: Boolean = false
+    val enableExternalTools: Boolean = false,
+    val enableReranker: Boolean = false,
+    val rerankerThreshold: Float = 0.5f,
+    val bm25Weight: Float = 0.3f,
+    val semanticWeight: Float = 0.7f
 ) {
     companion object {
         fun from(settings: RagSettings): RagSettingsState {
@@ -21,7 +25,11 @@ data class RagSettingsState(
                 chunkingStrategy = settings.chunkingStrategy,
                 enableHybridSearch = settings.enableHybridSearch,
                 enableAgenticRag = settings.enableAgenticRag,
-                enableExternalTools = settings.enableExternalTools
+                enableExternalTools = settings.enableExternalTools,
+                enableReranker = settings.enableReranker,
+                rerankerThreshold = settings.rerankerThreshold,
+                bm25Weight = settings.bm25Weight,
+                semanticWeight = settings.semanticWeight
             )
         }
     }
@@ -37,6 +45,10 @@ interface RagSettingsComponent {
     fun updateEnableHybridSearch(enabled: Boolean)
     fun updateEnableAgenticRag(enabled: Boolean)
     fun updateEnableExternalTools(enabled: Boolean)
+    fun updateEnableReranker(enabled: Boolean)
+    fun updateRerankerThreshold(value: Float)
+    fun updateBm25Weight(value: Float)
+    fun updateSemanticWeight(value: Float)
     fun resetToDefaults()
     fun onBack()
 }

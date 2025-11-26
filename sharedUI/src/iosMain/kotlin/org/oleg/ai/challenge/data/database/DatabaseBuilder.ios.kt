@@ -3,6 +3,7 @@ package org.oleg.ai.challenge.data.database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import kotlinx.cinterop.ExperimentalForeignApi
+import org.oleg.ai.challenge.data.database.migrations.MIGRATION_1_2
 import platform.Foundation.NSDocumentDirectory
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSUserDomainMask
@@ -26,5 +27,5 @@ actual fun getDatabaseBuilder(): RoomDatabase.Builder<AppDatabase> {
 
     return Room.databaseBuilder<AppDatabase>(
         name = dbFilePath
-    )
+    ).addMigrations(MIGRATION_1_2)
 }

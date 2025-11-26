@@ -57,6 +57,22 @@ class DefaultRagSettingsComponent(
         ragSettingsService.updateEnableExternalTools(enabled)
     }
 
+    override fun updateEnableReranker(enabled: Boolean) {
+        ragSettingsService.updateEnableReranker(enabled)
+    }
+
+    override fun updateRerankerThreshold(value: Float) {
+        ragSettingsService.updateRerankerThreshold(value)
+    }
+
+    override fun updateBm25Weight(value: Float) {
+        ragSettingsService.updateBm25Weight(value)
+    }
+
+    override fun updateSemanticWeight(value: Float) {
+        ragSettingsService.updateSemanticWeight(value)
+    }
+
     override fun resetToDefaults() {
         ragSettingsService.resetToDefaults()
     }

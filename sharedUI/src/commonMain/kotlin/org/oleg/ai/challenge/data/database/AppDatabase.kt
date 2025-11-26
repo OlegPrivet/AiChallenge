@@ -39,7 +39,7 @@ import org.oleg.ai.challenge.data.database.entity.QueryHistoryEntity
         DocumentChunkEntity::class,
         QueryHistoryEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

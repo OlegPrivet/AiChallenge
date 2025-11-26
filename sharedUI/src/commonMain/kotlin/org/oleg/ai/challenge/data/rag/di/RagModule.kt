@@ -13,8 +13,15 @@ import org.oleg.ai.challenge.data.rag.agent.SequentialMultiStepReasoner
 import org.oleg.ai.challenge.data.rag.agent.SimpleQueryDecomposer
 import org.oleg.ai.challenge.data.rag.agent.WebSearchExternalToolGateway
 import org.oleg.ai.challenge.data.rag.embedding.OllamaEmbeddingService
+import org.oleg.ai.challenge.data.rag.pipeline.RerankerPipeline
 import org.oleg.ai.challenge.data.rag.pipeline.VectorSearchPipeline
 import org.oleg.ai.challenge.data.rag.repository.DocumentIngestionRepository
+import org.oleg.ai.challenge.data.rag.reranker.BM25Scorer
+import org.oleg.ai.challenge.data.rag.reranker.FallbackBM25Scorer
+import org.oleg.ai.challenge.data.rag.reranker.HybridRerankerConfig
+import org.oleg.ai.challenge.data.rag.reranker.HybridRerankerService
+import org.oleg.ai.challenge.data.rag.reranker.ScoreFusion
+import org.oleg.ai.challenge.data.rag.reranker.SemanticSimilarityScorer
 import org.oleg.ai.challenge.data.rag.search.NoopLexicalSearchService
 import org.oleg.ai.challenge.data.rag.vectorstore.ChromaVectorStore
 import org.oleg.ai.challenge.data.rag.vectorstore.ChromaVectorStoreService
@@ -33,6 +40,7 @@ import org.oleg.ai.challenge.domain.rag.embedding.EmbeddingService
 import org.oleg.ai.challenge.domain.rag.embedding.InMemoryEmbeddingCache
 import org.oleg.ai.challenge.domain.rag.lexical.LexicalSearchService
 import org.oleg.ai.challenge.domain.rag.orchestrator.RagOrchestrator
+import org.oleg.ai.challenge.domain.rag.reranker.RerankerService
 import org.oleg.ai.challenge.domain.rag.vector.VectorStore
 
 val ragModule = module {
@@ -67,6 +75,37 @@ val ragModule = module {
     single<VectorStore> { ChromaVectorStoreService(store = get()) }
 
     single<LexicalSearchService> { NoopLexicalSearchService() }
+
+    // Hybrid Reranker components
+    single<BM25Scorer> {
+        // Platform-specific BM25 scorer will be provided by platform modules (JVM, iOS)
+        // For now, use fallback scorer
+        FallbackBM25Scorer()
+    }
+
+    single { SemanticSimilarityScorer(logger = Logger.withTag("SemanticSimilarityScorer")) }
+
+    single { ScoreFusion(logger = Logger.withTag("ScoreFusion")) }
+
+    single<RerankerService> {
+        val ragSettingsService = get<org.oleg.ai.challenge.data.settings.RagSettingsService>()
+        val settings = ragSettingsService.loadSettings()
+
+        HybridRerankerService(
+            embeddingService = get(),
+            bm25Scorer = get(),
+            semanticScorer = get(),
+            scoreFusion = get(),
+            config = HybridRerankerConfig(
+                bm25Weight = settings.bm25Weight,
+                semanticWeight = settings.semanticWeight,
+                minimumScore = settings.rerankerThreshold
+            ),
+            embeddingModel = BuildConfig.DEFAULT_EMBEDDING_MODEL,
+            embeddingModelVersion = BuildConfig.DEFAULT_EMBEDDING_MODEL,
+            logger = Logger.withTag("HybridRerankerService")
+        )
+    }
 
     // Agent implementations with LLM enhancements
     single { SimpleQueryDecomposer() }  // Fallback decomposer
@@ -129,7 +168,23 @@ val ragModule = module {
         )
     }
 
-    single<SearchPipeline> { get<VectorSearchPipeline>() }
+    single<SearchPipeline> {
+        val ragSettingsService = get<org.oleg.ai.challenge.data.settings.RagSettingsService>()
+        val settings = ragSettingsService.loadSettings()
+        val basePipeline = get<VectorSearchPipeline>()
+
+        if (settings.enableReranker) {
+            RerankerPipeline(
+                innerPipeline = basePipeline,
+                rerankerService = get(),
+                relevanceThreshold = settings.rerankerThreshold.toDouble(),
+                enabled = true,
+                logger = Logger.withTag("RerankerPipeline")
+            )
+        } else {
+            basePipeline
+        }
+    }
 
     single {
         RagOrchestrator(

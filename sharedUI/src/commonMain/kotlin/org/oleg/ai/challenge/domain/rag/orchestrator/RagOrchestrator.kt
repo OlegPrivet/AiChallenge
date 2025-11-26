@@ -116,7 +116,10 @@ class RagOrchestrator(
             topK = topK
         )
 
-        logger.d { "RAG retrieved ${finalResults.size} chunks (validated=${validated.size}, conflicts=${resolved.conflicts.size}) for query='$query'" }
+        val rerankedCount = finalResults.count { it.rerankedScore != null }
+        logger.d {
+            "RAG retrieved ${finalResults.size} chunks (validated=${validated.size}, conflicts=${resolved.conflicts.size}, reranked=$rerankedCount) for query='$query'"
+        }
 
         // Log query history asynchronously (fire-and-forget)
         logQueryHistory(
@@ -156,7 +159,9 @@ class RagOrchestrator(
     }
 
     private fun buildContext(results: List<RetrievalResult>): String {
-        return results.mapIndexed { index, result ->
+        // Sort by reranked score if available, otherwise use original score
+        val sorted = results.sortedByDescending { it.rerankedScore ?: it.score }
+        return sorted.mapIndexed { index, result ->
             "[${index + 1}] ${result.chunk.content}"
         }.joinToString(separator = "\n\n")
     }
@@ -262,6 +267,15 @@ class RagOrchestrator(
                 }
                 val documentIds = results.map { it.document.id }.distinct()
 
+                // Calculate reranker metrics
+                val rerankedResults = results.filter { it.rerankedScore != null }
+                val rerankerEnabled = rerankedResults.isNotEmpty()
+                val averageScoreImprovement = if (rerankedResults.isNotEmpty()) {
+                    rerankedResults.map { (it.rerankedScore!! - it.score) }.average()
+                } else {
+                    null
+                }
+
                 val queryHistory = QueryHistory(
                     queryText = query,
                     timestamp = Clock.System.now().toEpochMilliseconds(),
@@ -272,7 +286,11 @@ class RagOrchestrator(
                     topK = topK,
                     similarityThreshold = similarityThreshold,
                     hybridSearchEnabled = hybridSearchEnabled,
-                    hybridSearchWeight = hybridSearchWeight
+                    hybridSearchWeight = hybridSearchWeight,
+                    rerankerEnabled = rerankerEnabled,
+                    rerankerThreshold = null, // Will be added from settings if needed
+                    resultsBeforeReranking = null, // Would require tracking before/after
+                    averageScoreImprovement = averageScoreImprovement
                 )
 
                 queryHistoryRepository.saveQueryHistory(queryHistory)

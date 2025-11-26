@@ -1,0 +1,672 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "04956bfc3cebbffe0519a189ad69f7a0",
+    "entities": [
+      {
+        "tableName": "chats",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`chatId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `chatName` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `isRagEnabled` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "chatId",
+            "columnName": "chatId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatName",
+            "columnName": "chatName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isRagEnabled",
+            "columnName": "isRagEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "chatId"
+          ]
+        }
+      },
+      {
+        "tableName": "agents",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `agentId` TEXT NOT NULL, `chatId` INTEGER NOT NULL, `agentName` TEXT NOT NULL, `systemPrompt` TEXT, `assistantPrompt` TEXT, `model` TEXT NOT NULL, `temperature` REAL NOT NULL, `isMain` INTEGER NOT NULL, `parentAgentId` TEXT, FOREIGN KEY(`chatId`) REFERENCES `chats`(`chatId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "agentId",
+            "columnName": "agentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatId",
+            "columnName": "chatId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "agentName",
+            "columnName": "agentName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "systemPrompt",
+            "columnName": "systemPrompt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "assistantPrompt",
+            "columnName": "assistantPrompt",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "model",
+            "columnName": "model",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "temperature",
+            "columnName": "temperature",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isMain",
+            "columnName": "isMain",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentAgentId",
+            "columnName": "parentAgentId",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_agents_chatId",
+            "unique": false,
+            "columnNames": [
+              "chatId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_agents_chatId` ON `${TABLE_NAME}` (`chatId`)"
+          },
+          {
+            "name": "index_agents_agentId",
+            "unique": false,
+            "columnNames": [
+              "agentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_agents_agentId` ON `${TABLE_NAME}` (`agentId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "chats",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "chatId"
+            ],
+            "referencedColumns": [
+              "chatId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "messages",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `chatId` INTEGER NOT NULL, `messageId` TEXT NOT NULL, `agentId` TEXT, `timestamp` INTEGER NOT NULL, `role` TEXT, `text` TEXT NOT NULL, `isFromUser` INTEGER NOT NULL, `isVisibleInUI` INTEGER NOT NULL, `agentName` TEXT, `modelUsed` TEXT, `usagePromptTokens` INTEGER, `usageCompletionTokens` INTEGER, `usageTotalTokens` INTEGER, `citationsJson` TEXT, `retrievalTraceJson` TEXT, FOREIGN KEY(`chatId`) REFERENCES `chats`(`chatId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chatId",
+            "columnName": "chatId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageId",
+            "columnName": "messageId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "agentId",
+            "columnName": "agentId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isFromUser",
+            "columnName": "isFromUser",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isVisibleInUI",
+            "columnName": "isVisibleInUI",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "agentName",
+            "columnName": "agentName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "modelUsed",
+            "columnName": "modelUsed",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "usagePromptTokens",
+            "columnName": "usagePromptTokens",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "usageCompletionTokens",
+            "columnName": "usageCompletionTokens",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "usageTotalTokens",
+            "columnName": "usageTotalTokens",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "citationsJson",
+            "columnName": "citationsJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "retrievalTraceJson",
+            "columnName": "retrievalTraceJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_messages_chatId",
+            "unique": false,
+            "columnNames": [
+              "chatId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_messages_chatId` ON `${TABLE_NAME}` (`chatId`)"
+          },
+          {
+            "name": "index_messages_timestamp",
+            "unique": false,
+            "columnNames": [
+              "timestamp"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_messages_timestamp` ON `${TABLE_NAME}` (`timestamp`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "chats",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "chatId"
+            ],
+            "referencedColumns": [
+              "chatId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "mcp_servers",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `transportType` TEXT NOT NULL, `serverUrl` TEXT NOT NULL, `authType` TEXT NOT NULL, `authHeadersJson` TEXT NOT NULL, `commandArgsJson` TEXT NOT NULL, `environmentVarsJson` TEXT NOT NULL, `isActive` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transportType",
+            "columnName": "transportType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serverUrl",
+            "columnName": "serverUrl",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "authType",
+            "columnName": "authType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "authHeadersJson",
+            "columnName": "authHeadersJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "commandArgsJson",
+            "columnName": "commandArgsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "environmentVarsJson",
+            "columnName": "environmentVarsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isActive",
+            "columnName": "isActive",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "documents",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`documentId` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT, `sourceType` TEXT NOT NULL, `uri` TEXT, `metadataJson` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `chunkingStrategyVersion` TEXT NOT NULL, `embeddingModelVersion` TEXT NOT NULL, PRIMARY KEY(`documentId`))",
+        "fields": [
+          {
+            "fieldPath": "documentId",
+            "columnName": "documentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "sourceType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uri",
+            "columnName": "uri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "metadataJson",
+            "columnName": "metadataJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkingStrategyVersion",
+            "columnName": "chunkingStrategyVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "embeddingModelVersion",
+            "columnName": "embeddingModelVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "documentId"
+          ]
+        }
+      },
+      {
+        "tableName": "document_chunks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `chunkId` TEXT NOT NULL, `documentId` TEXT NOT NULL, `content` TEXT NOT NULL, `chunkIndex` INTEGER NOT NULL, `tokenCount` INTEGER, `embeddingJson` TEXT, `embeddingModelVersion` TEXT NOT NULL, `chunkingStrategyVersion` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, FOREIGN KEY(`documentId`) REFERENCES `documents`(`documentId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkId",
+            "columnName": "chunkId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentId",
+            "columnName": "documentId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "content",
+            "columnName": "content",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkIndex",
+            "columnName": "chunkIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tokenCount",
+            "columnName": "tokenCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "embeddingJson",
+            "columnName": "embeddingJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "embeddingModelVersion",
+            "columnName": "embeddingModelVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "chunkingStrategyVersion",
+            "columnName": "chunkingStrategyVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_document_chunks_documentId",
+            "unique": false,
+            "columnNames": [
+              "documentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_document_chunks_documentId` ON `${TABLE_NAME}` (`documentId`)"
+          },
+          {
+            "name": "index_document_chunks_chunkId",
+            "unique": true,
+            "columnNames": [
+              "chunkId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_document_chunks_chunkId` ON `${TABLE_NAME}` (`chunkId`)"
+          },
+          {
+            "name": "index_document_chunks_embeddingModelVersion",
+            "unique": false,
+            "columnNames": [
+              "embeddingModelVersion"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_document_chunks_embeddingModelVersion` ON `${TABLE_NAME}` (`embeddingModelVersion`)"
+          },
+          {
+            "name": "index_document_chunks_chunkingStrategyVersion",
+            "unique": false,
+            "columnNames": [
+              "chunkingStrategyVersion"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_document_chunks_chunkingStrategyVersion` ON `${TABLE_NAME}` (`chunkingStrategyVersion`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "documents",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "documentId"
+            ],
+            "referencedColumns": [
+              "documentId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "query_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `queryText` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `resultsCount` INTEGER NOT NULL, `averageRelevanceScore` REAL NOT NULL, `citationsCount` INTEGER NOT NULL, `documentIdsJson` TEXT, `topK` INTEGER NOT NULL, `similarityThreshold` REAL NOT NULL, `hybridSearchEnabled` INTEGER NOT NULL, `hybridSearchWeight` REAL, `rerankerEnabled` INTEGER NOT NULL, `rerankerThreshold` REAL, `resultsBeforeReranking` INTEGER, `averageScoreImprovement` REAL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "queryText",
+            "columnName": "queryText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resultsCount",
+            "columnName": "resultsCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "averageRelevanceScore",
+            "columnName": "averageRelevanceScore",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "citationsCount",
+            "columnName": "citationsCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "documentIdsJson",
+            "columnName": "documentIdsJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "topK",
+            "columnName": "topK",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "similarityThreshold",
+            "columnName": "similarityThreshold",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hybridSearchEnabled",
+            "columnName": "hybridSearchEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hybridSearchWeight",
+            "columnName": "hybridSearchWeight",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "rerankerEnabled",
+            "columnName": "rerankerEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rerankerThreshold",
+            "columnName": "rerankerThreshold",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "resultsBeforeReranking",
+            "columnName": "resultsBeforeReranking",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "averageScoreImprovement",
+            "columnName": "averageScoreImprovement",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_query_history_timestamp",
+            "unique": false,
+            "columnNames": [
+              "timestamp"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_query_history_timestamp` ON `${TABLE_NAME}` (`timestamp`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '04956bfc3cebbffe0519a189ad69f7a0')"
+    ]
+  }
+}

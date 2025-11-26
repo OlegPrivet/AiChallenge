@@ -122,6 +122,7 @@ buildConfig {
     buildConfigField("String", "OLLAMA_BASE_URL", "\"$ollamaBaseUrl\"")
     buildConfigField("String", "CHROMA_BASE_URL", "\"$chromaBaseUrl\"")
     buildConfigField("String", "DEFAULT_EMBEDDING_MODEL", "\"$defaultEmbeddingModel\"")
+    buildConfigField("String", "DEFAULT_RERANKER_MODEL", "\"dengcao/Qwen3-Reranker-0.6B:F16\"")
     buildConfigField("Double", "DEFAULT_VECTOR_WEIGHT", "1.0")
     buildConfigField("Double", "DEFAULT_LEXICAL_WEIGHT", "1.0")
 
