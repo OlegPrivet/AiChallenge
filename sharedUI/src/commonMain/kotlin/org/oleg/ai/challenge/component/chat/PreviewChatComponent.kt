@@ -38,7 +38,8 @@ class PreviewChatComponent(
     override val currentTemperature: Value<Float> = MutableValue(1.0f),
     override val mcpUiState: Value<McpUiState> = MutableValue(McpUiState()),
     override val isRagEnabled: Value<Boolean> = MutableValue(false),
-    override val isDeveloperModeEnabled: Value<Boolean> = MutableValue(false)
+    override val isDeveloperModeEnabled: Value<Boolean> = MutableValue(false),
+    override val selectedCitationSource: Value<CitationState> = MutableValue(CitationState.None)
 ) : ChatComponent {
     override fun onTextChanged(text: String) = Unit
     override fun onSendMessage() = Unit
@@ -46,7 +47,6 @@ class PreviewChatComponent(
     override fun onModelChanged(model: String) = Unit
     override fun onTemperatureChanged(temperature: Float) = Unit
     override fun onSummarizeConversation() = Unit
-    override fun getSelectedCitationSource(): CitationSourceDetail? = null
     override fun onToggleRagMode(enabled: Boolean) = Unit
     override fun onShowSource(citation: org.oleg.ai.challenge.domain.rag.orchestrator.Citation, chunkContent: String) = Unit
     override fun onHideSource() = Unit

@@ -20,9 +20,8 @@ interface ChatComponent {
     // RAG-related state
     val isRagEnabled: Value<Boolean>  // Whether RAG mode is enabled for this chat
     val isDeveloperModeEnabled: Value<Boolean>  // Whether developer mode is enabled
-
     // For showing citation modal (nullable OK here, handled separately)
-    fun getSelectedCitationSource(): CitationSourceDetail?
+    val selectedCitationSource: Value<CitationState>
 
     fun onTextChanged(text: String)
     fun onSendMessage()
@@ -45,3 +44,8 @@ data class CitationSourceDetail(
     val citation: Citation,
     val chunkContent: String
 )
+
+sealed interface CitationState {
+    object None : CitationState
+    data class Detail(val data: CitationSourceDetail) : CitationState
+}

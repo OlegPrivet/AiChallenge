@@ -43,6 +43,7 @@ import com.arkivanov.decompose.extensions.compose.subscribeAsState
 import com.mikepenz.markdown.m3.Markdown
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.oleg.ai.challenge.component.chat.ChatComponent
+import org.oleg.ai.challenge.component.chat.CitationState
 import org.oleg.ai.challenge.component.chat.PreviewChatComponent
 import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.ChatMessage
@@ -69,7 +70,7 @@ fun ChatScreen(
     val isRagEnabled by component.isRagEnabled.subscribeAsState()
     val isDeveloperModeEnabled by component.isDeveloperModeEnabled.subscribeAsState()
 
-    val selectedCitationSource = component.getSelectedCitationSource()
+    val selectedCitationSource by component.selectedCitationSource.subscribeAsState()
 
     val lazyListState: LazyListState = rememberLazyListState()
     val isSummarizeVisibility by remember(isLoading) {
@@ -203,9 +204,10 @@ fun ChatScreen(
         }
 
         // Source Modal
-        selectedCitationSource?.let { source ->
-            SourceModal(
-                citationDetail = source,
+        when (selectedCitationSource) {
+            CitationState.None -> Unit
+            is CitationState.Detail -> SourceModal(
+                citationDetail = (selectedCitationSource as CitationState.Detail).data,
                 onDismiss = component::onHideSource
             )
         }
@@ -242,9 +244,8 @@ private fun SourceModal(
                 modifier = Modifier.verticalScroll(rememberScrollState())
             ) {
                 SelectionContainer {
-                    Text(
-                        text = citationDetail.chunkContent,
-                        style = MaterialTheme.typography.bodyMedium
+                    Markdown(
+                        content = citationDetail.chunkContent,
                     )
                 }
             }

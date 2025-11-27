@@ -71,12 +71,12 @@ class DefaultChatComponent(
     private val _isRagEnabled = MutableValue(false)
     override val isRagEnabled: Value<Boolean> = _isRagEnabled
 
-    private var _selectedCitationSource: CitationSourceDetail? = null
+    private var _selectedCitationSource: MutableValue<CitationState> = MutableValue(CitationState.None)
+    override val selectedCitationSource: Value<CitationState> = _selectedCitationSource
 
     private val _isDeveloperModeEnabled = MutableValue(false)
     override val isDeveloperModeEnabled: Value<Boolean> = _isDeveloperModeEnabled
 
-    override fun getSelectedCitationSource(): CitationSourceDetail? = _selectedCitationSource
 
     init {
         // Observe MCP UI state changes from the orchestrator
@@ -740,14 +740,16 @@ IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FO
     }
 
     override fun onShowSource(citation: org.oleg.ai.challenge.domain.rag.orchestrator.Citation, chunkContent: String) {
-        _selectedCitationSource = CitationSourceDetail(
-            citation = citation,
-            chunkContent = chunkContent
+        _selectedCitationSource.value = CitationState.Detail(
+            CitationSourceDetail(
+                citation = citation,
+                chunkContent = chunkContent
+            )
         )
     }
 
     override fun onHideSource() {
-        _selectedCitationSource = null
+        _selectedCitationSource.value = CitationState.None
     }
 
     override fun onToggleDeveloperMode(enabled: Boolean) {
