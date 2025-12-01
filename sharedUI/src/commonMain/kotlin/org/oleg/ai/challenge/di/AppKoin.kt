@@ -17,7 +17,8 @@ fun initKoin(appDeclaration: KoinAppDeclaration = {}) = startKoin {
             networkModule,
             databaseModule,
             ragModule,
-            settingsModule
+            settingsModule,
+            commandModule
         ) + ragPlatformModules() + filePlatformModules()
     )
 }

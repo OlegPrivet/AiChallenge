@@ -5,6 +5,7 @@ import org.oleg.ai.challenge.domain.rag.QueryEmbedding
 import org.oleg.ai.challenge.domain.rag.SearchPipeline
 import org.oleg.ai.challenge.domain.rag.model.RetrievalResult
 import org.oleg.ai.challenge.domain.rag.reranker.RerankerService
+import org.oleg.ai.challenge.utils.format
 
 /**
  * Decorator that adds cross-encoder reranking to any search pipeline.
@@ -85,9 +86,9 @@ class RerankerPipeline(
             val improvement = avgReranked - avgOriginal
 
             logger.d {
-                "Score statistics: original avg=${String.format("%.3f", avgOriginal)}, " +
-                        "reranked avg=${String.format("%.3f", avgReranked)}, " +
-                        "improvement=${String.format("%+.3f", improvement)}"
+                "Score statistics: original avg=${avgOriginal.format(3)}, " +
+                        "reranked avg=${avgReranked.format(3)}, " +
+                        "improvement=${improvement.format(3)}"
             }
         }
 

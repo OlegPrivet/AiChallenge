@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import org.oleg.ai.challenge.utils.format
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -398,7 +399,7 @@ private fun EmbeddingSection(
                 shape = MaterialTheme.shapes.small
             ) {
                 Text(
-                    text = embedding.values.joinToString(", ") { "%.4f".format(it) },
+                    text = embedding.values.joinToString(", ") { it.format(4) },
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(8.dp)
                 )
@@ -449,7 +450,7 @@ private fun EmbeddingStats(embedding: Embedding) {
             )
         }
         Text(
-            text = "min: ${"%.4f".format(stats.min)} • max: ${"%.4f".format(stats.max)} • mean: ${"%.4f".format(stats.mean)} • norm: ${"%.4f".format(stats.norm)}",
+            text = "min: ${stats.min.format(4)} • max: ${stats.max.format(4)} • mean: ${stats.mean.format(4)} • norm: ${stats.norm.format(4)}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

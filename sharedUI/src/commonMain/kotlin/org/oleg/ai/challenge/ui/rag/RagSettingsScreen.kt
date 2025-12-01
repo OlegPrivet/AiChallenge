@@ -33,6 +33,7 @@ import org.oleg.ai.challenge.component.rag.RagSettingsComponent
 import org.oleg.ai.challenge.component.rag.RagSettingsState
 import org.oleg.ai.challenge.data.settings.RagSettings
 import org.oleg.ai.challenge.theme.AppTheme
+import org.oleg.ai.challenge.utils.format
 
 @Composable
 fun RagSettingsScreen(
@@ -93,7 +94,7 @@ fun RagSettingsScreen(
 
                 SettingSlider(
                     title = "Similarity Threshold",
-                    description = "Minimum similarity score to include results (${"%.2f".format(state.similarityThreshold)})",
+                    description = "Minimum similarity score to include results (${state.similarityThreshold.format(2)})",
                     value = state.similarityThreshold,
                     valueRange = RagSettings.MIN_SIMILARITY..RagSettings.MAX_SIMILARITY,
                     onValueChange = component::updateSimilarityThreshold
@@ -176,7 +177,7 @@ fun RagSettingsScreen(
                 if (state.enableHybridSearch) {
                     SettingSlider(
                         title = "Hybrid Search Weight",
-                        description = "Vector search vs BM25 balance (${"%.2f".format(state.hybridSearchWeight)})",
+                        description = "Vector search vs BM25 balance (${state.hybridSearchWeight.format(2)})",
                         value = state.hybridSearchWeight,
                         valueRange = RagSettings.MIN_HYBRID_WEIGHT..RagSettings.MAX_HYBRID_WEIGHT,
                         onValueChange = component::updateHybridSearchWeight
@@ -224,7 +225,7 @@ fun RagSettingsScreen(
                 if (state.enableReranker) {
                     SettingSlider(
                         title = "BM25 Weight",
-                        description = "Weight for lexical/keyword matching (${"%.2f".format(state.bm25Weight)})",
+                        description = "Weight for lexical/keyword matching (${state.bm25Weight.format(2)})",
                         value = state.bm25Weight,
                         valueRange = RagSettings.MIN_RERANKER_WEIGHT..RagSettings.MAX_RERANKER_WEIGHT,
                         onValueChange = component::updateBm25Weight
@@ -232,7 +233,7 @@ fun RagSettingsScreen(
 
                     SettingSlider(
                         title = "Semantic Weight",
-                        description = "Weight for semantic similarity (${"%.2f".format(state.semanticWeight)})",
+                        description = "Weight for semantic similarity (${state.semanticWeight.format(2)})",
                         value = state.semanticWeight,
                         valueRange = RagSettings.MIN_RERANKER_WEIGHT..RagSettings.MAX_RERANKER_WEIGHT,
                         onValueChange = component::updateSemanticWeight
@@ -241,7 +242,7 @@ fun RagSettingsScreen(
                     val totalWeight = state.bm25Weight + state.semanticWeight
                     if (totalWeight != 1.0f) {
                         Text(
-                            text = "Note: Weights will be normalized (total: ${"%.2f".format(totalWeight)})",
+                            text = "Note: Weights will be normalized (total: ${totalWeight.format(2)})",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.secondary
                         )
@@ -249,7 +250,7 @@ fun RagSettingsScreen(
 
                     SettingSlider(
                         title = "Relevance Threshold",
-                        description = "Minimum reranked score to keep results (${"%.2f".format(state.rerankerThreshold)})",
+                        description = "Minimum reranked score to keep results (${state.rerankerThreshold.format(2)})",
                         value = state.rerankerThreshold,
                         valueRange = RagSettings.MIN_RERANKER_THRESHOLD..RagSettings.MAX_RERANKER_THRESHOLD,
                         onValueChange = component::updateRerankerThreshold

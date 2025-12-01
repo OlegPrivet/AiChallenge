@@ -22,6 +22,7 @@ import org.oleg.ai.challenge.data.network.service.ChatApiService
 import org.oleg.ai.challenge.data.network.service.ChatOrchestratorService
 import org.oleg.ai.challenge.data.network.service.McpClientService
 import org.oleg.ai.challenge.data.repository.ChatRepository
+import org.oleg.ai.challenge.domain.command.CommandOrchestrator
 import kotlin.time.Clock.System
 import kotlin.time.ExperimentalTime
 
@@ -32,6 +33,7 @@ class DefaultChatComponent(
     private val agentManager: AgentManager,
     private val chatOrchestratorService: ChatOrchestratorService,
     private val mcpClientService: McpClientService,
+    private val commandOrchestrator: CommandOrchestrator,
     private val chatId: Long? = null,
 ) : ChatComponent, ComponentContext by componentContext {
 
@@ -320,10 +322,46 @@ class DefaultChatComponent(
         val currentAgent = getCurrentAgent()
         val currentAgentId = currentAgent.id
 
+        // Process commands
+        scope.launch {
+            when (val commandResult = commandOrchestrator.process(text)) {
+                is CommandOrchestrator.ProcessingResult.NotACommand -> {
+                    // Regular message - continue with existing flow
+                    sendNormalMessage(text, currentAgent, currentAgentId)
+                }
+
+                is CommandOrchestrator.ProcessingResult.Success -> {
+                    // Command processed - send transformed message to AI
+                    // But show original command in chat history
+                    sendCommandMessage(
+                        originalCommand = text,
+                        transformedMessage = commandResult.transformedMessage,
+                        currentAgent = currentAgent,
+                        currentAgentId = currentAgentId
+                    )
+                }
+
+                is CommandOrchestrator.ProcessingResult.Error -> {
+                    // Command error - show in chat
+                    _inputText.value = ""
+                    addErrorMessage(currentAgentId, commandResult.message)
+                }
+            }
+        }
+    }
+
+    /**
+     * Sends a regular (non-command) message to AI
+     */
+    private suspend fun sendNormalMessage(
+        messageText: String,
+        currentAgent: Agent,
+        currentAgentId: String
+    ) {
         // Add user message to the message history
         val userMessage = ChatMessage(
             id = generateId(),
-            text = text,
+            text = messageText,
             isFromUser = true,
             role = MessageRole.USER,
             isVisibleInUI = true,
@@ -350,76 +388,184 @@ class DefaultChatComponent(
             }
         }
 
-        logger.d { "Sending user message to agent $currentAgentId: $text" }
+        logger.d { "Sending user message to agent $currentAgentId: $messageText" }
 
         // Send API request through orchestrator
-        scope.launch {
-            try {
-                // Get messages to send based on whether this is the main agent
-                val messagesToSend = if (currentAgentId == "main") {
-                    // Main agent gets ALL messages
-                    allMessages.toList()
-                } else {
-                    // Sub-agent gets only messages related to this specific agent
-                    // plus MCP system prompts (which have no agentId)
-                    allMessages.filter { message ->
-                        message.agentId == currentAgentId ||
-                                message.agentId == null ||
-                                message.isMcpSystemPrompt
-                    }
+        try {
+            // Get messages to send based on whether this is the main agent
+            val messagesToSend = if (currentAgentId == "main") {
+                // Main agent gets ALL messages
+                allMessages.toList()
+            } else {
+                // Sub-agent gets only messages related to this specific agent
+                // plus MCP system prompts (which have no agentId)
+                allMessages.filter { message ->
+                    message.agentId == currentAgentId ||
+                            message.agentId == null ||
+                            message.isMcpSystemPrompt
                 }
+            }
 
-                // Use orchestrator to handle message with MCP integration
-                val result = chatOrchestratorService.handleUserMessage(
-                    conversationHistory = messagesToSend,
-                    model = currentAgent.model,
-                    temperature = currentAgent.temperature,
-                    toolName = "",
-                    isRagEnabled = _isRagEnabled.value
-                )
+            // Use orchestrator to handle message with MCP integration
+            val result = chatOrchestratorService.handleUserMessage(
+                conversationHistory = messagesToSend,
+                model = currentAgent.model,
+                temperature = currentAgent.temperature,
+                toolName = "",
+                isRagEnabled = _isRagEnabled.value
+            )
 
-                when (result) {
-                    is ChatOrchestratorService.OrchestratorResult.Success -> {
-                        val aiMessage = ChatMessage(
-                            id = generateId(),
-                            text = result.finalResponse,
-                            isFromUser = false,
-                            role = MessageRole.ASSISTANT,
-                            isVisibleInUI = true,
-                            agentName = currentAgent.name,
-                            agentId = currentAgentId,
-                            modelUsed = result.model,
-                            usage = result.usage,
-                            citations = result.citations,
-                            retrievalTrace = result.retrievalTrace
-                        )
-                        allMessages.add(aiMessage)
+            when (result) {
+                is ChatOrchestratorService.OrchestratorResult.Success -> {
+                    val aiMessage = ChatMessage(
+                        id = generateId(),
+                        text = result.finalResponse,
+                        isFromUser = false,
+                        role = MessageRole.ASSISTANT,
+                        isVisibleInUI = true,
+                        agentName = currentAgent.name,
+                        agentId = currentAgentId,
+                        modelUsed = result.model,
+                        usage = result.usage,
+                        citations = result.citations,
+                        retrievalTrace = result.retrievalTrace
+                    )
+                    allMessages.add(aiMessage)
 
-                        // Save AI message to repository if chatId is available
-                        if (chatId != null) {
-                            scope.launch {
-                                try {
-                                    chatRepository.saveMessage(chatId, aiMessage)
-                                    logger.d { "Saved AI message to chat $chatId" }
-                                } catch (e: Exception) {
-                                    logger.e(e) { "Failed to save AI message to repository" }
-                                }
+                    // Save AI message to repository if chatId is available
+                    if (chatId != null) {
+                        scope.launch {
+                            try {
+                                chatRepository.saveMessage(chatId, aiMessage)
+                                logger.d { "Saved AI message to chat $chatId" }
+                            } catch (e: Exception) {
+                                logger.e(e) { "Failed to save AI message to repository" }
                             }
                         }
-                        updateDisplayedMessages()
                     }
-
-                    is ChatOrchestratorService.OrchestratorResult.Error -> {
-                        logger.e { "Orchestrator error: ${result.message}" }
-                        addErrorMessage(currentAgentId, "Error: ${result.message}")
-                    }
+                    updateDisplayedMessages()
                 }
-            } catch (e: Exception) {
-                logger.e(e) { "Unexpected error during API call" }
-                addErrorMessage(currentAgentId, "Unexpected error: ${e.message ?: "Unknown error"}")
-            } finally {
-                _isLoading.value = false
+
+                is ChatOrchestratorService.OrchestratorResult.Error -> {
+                    logger.e { "Orchestrator error: ${result.message}" }
+                    addErrorMessage(currentAgentId, "Error: ${result.message}")
+                }
             }
+        } catch (e: Exception) {
+            logger.e(e) { "Unexpected error during API call" }
+            addErrorMessage(currentAgentId, "Unexpected error: ${e.message ?: "Unknown error"}")
+        } finally {
+            _isLoading.value = false
+        }
+    }
+
+    /**
+     * Handles command messages - shows original command in chat, but sends transformed message to AI
+     */
+    private suspend fun sendCommandMessage(
+        originalCommand: String,
+        transformedMessage: String,
+        currentAgent: Agent,
+        currentAgentId: String
+    ) {
+        // Add original command to chat history (user sees what they typed)
+        val userMessage = ChatMessage(
+            id = generateId(),
+            text = originalCommand,  // Show "/help <url>"
+            isFromUser = true,
+            role = MessageRole.USER,
+            isVisibleInUI = true,
+            agentName = currentAgent.name,
+            agentId = currentAgentId
+        )
+
+        allMessages.add(userMessage)
+        updateDisplayedMessages()
+        _inputText.value = ""
+        _isLoading.value = true
+
+        // Save command message
+        if (chatId != null) {
+            scope.launch {
+                try {
+                    chatRepository.saveMessage(chatId, userMessage)
+                    chatRepository.updateChatNameFromFirstMessage(chatId)
+                    logger.d { "Saved command message to chat $chatId" }
+                } catch (e: Exception) {
+                    logger.e(e) { "Failed to save command message" }
+                }
+            }
+        }
+
+        logger.d { "Processing command for agent $currentAgentId: $originalCommand -> $transformedMessage" }
+
+        // Send transformed message to AI (AI sees "Provide overview...")
+        try {
+            // Build conversation history with transformed message
+            val messagesToSend = if (currentAgentId == "main") {
+                allMessages.toList()
+            } else {
+                allMessages.filter { message ->
+                    message.agentId == currentAgentId ||
+                            message.agentId == null ||
+                            message.isMcpSystemPrompt
+                }
+            }.toMutableList()
+
+            // Replace last message (the command) with transformed version for AI
+            if (messagesToSend.isNotEmpty()) {
+                val lastIndex = messagesToSend.lastIndex
+                messagesToSend[lastIndex] = messagesToSend[lastIndex].copy(text = transformedMessage)
+            }
+
+            val result = chatOrchestratorService.handleUserMessage(
+                conversationHistory = messagesToSend,
+                model = currentAgent.model,
+                temperature = currentAgent.temperature,
+                toolName = "",
+                isRagEnabled = _isRagEnabled.value
+            )
+
+            when (result) {
+                is ChatOrchestratorService.OrchestratorResult.Success -> {
+                    val aiMessage = ChatMessage(
+                        id = generateId(),
+                        text = result.finalResponse,
+                        isFromUser = false,
+                        role = MessageRole.ASSISTANT,
+                        isVisibleInUI = true,
+                        agentName = currentAgent.name,
+                        agentId = currentAgentId,
+                        modelUsed = result.model,
+                        usage = result.usage,
+                        citations = result.citations,
+                        retrievalTrace = result.retrievalTrace
+                    )
+                    allMessages.add(aiMessage)
+
+                    if (chatId != null) {
+                        scope.launch {
+                            try {
+                                chatRepository.saveMessage(chatId, aiMessage)
+                                logger.d { "Saved AI response to command" }
+                            } catch (e: Exception) {
+                                logger.e(e) { "Failed to save AI response" }
+                            }
+                        }
+                    }
+                    updateDisplayedMessages()
+                }
+
+                is ChatOrchestratorService.OrchestratorResult.Error -> {
+                    logger.e { "Orchestrator error: ${result.message}" }
+                    addErrorMessage(currentAgentId, "Error: ${result.message}")
+                }
+            }
+        } catch (e: Exception) {
+            logger.e(e) { "Unexpected error during command processing" }
+            addErrorMessage(currentAgentId, "Unexpected error: ${e.message ?: "Unknown error"}")
+        } finally {
+            _isLoading.value = false
         }
     }
 

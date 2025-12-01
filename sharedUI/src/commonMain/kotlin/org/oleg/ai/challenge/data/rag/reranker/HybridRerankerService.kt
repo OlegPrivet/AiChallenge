@@ -6,6 +6,7 @@ import org.oleg.ai.challenge.domain.rag.embedding.EmbeddingService
 import org.oleg.ai.challenge.domain.rag.model.Embedding
 import org.oleg.ai.challenge.domain.rag.model.RetrievalResult
 import org.oleg.ai.challenge.domain.rag.reranker.RerankerService
+import org.oleg.ai.challenge.utils.format
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
@@ -114,10 +115,10 @@ class HybridRerankerService(
                 val avgReranked = filtered.mapNotNull { it.rerankedScore }.average()
 
                 logger.d {
-                    "Score statistics: original=${String.format("%.3f", avgOriginal)}, " +
-                            "BM25=${String.format("%.3f", avgBm25)}, " +
-                            "semantic=${String.format("%.3f", avgSemantic)}, " +
-                            "reranked=${String.format("%.3f", avgReranked)}"
+                    "Score statistics: original=${avgOriginal.format(3)}, " +
+                            "BM25=${avgBm25.format(3)}, " +
+                            "semantic=${avgSemantic.format(3)}, " +
+                            "reranked=${avgReranked.format(3)}"
                 }
             }
 

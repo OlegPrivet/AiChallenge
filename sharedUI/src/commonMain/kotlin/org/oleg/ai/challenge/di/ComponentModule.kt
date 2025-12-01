@@ -76,6 +76,7 @@ val componentModule = module {
                             agentManager = agentManager,
                             chatOrchestratorService = chatOrchestratorService,
                             mcpClientService = mcpClientService,
+                            commandOrchestrator = get(),
                             chatId = chatId,
                         )
                     },

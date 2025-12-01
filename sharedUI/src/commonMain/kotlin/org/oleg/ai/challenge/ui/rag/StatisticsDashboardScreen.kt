@@ -33,6 +33,7 @@ import org.oleg.ai.challenge.data.model.QueryHistory
 import org.oleg.ai.challenge.theme.AppTheme
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.math.round
 
 @Composable
 fun StatisticsDashboardScreen(
@@ -129,7 +130,7 @@ fun StatisticsDashboardScreen(
         if (queryHistoryStats.totalQueries > 0) {
             StatCard(
                 title = "Average Relevance",
-                value = "%.2f".format(queryHistoryStats.averageRelevanceScore),
+                value = "${(round(queryHistoryStats.averageRelevanceScore * 100) / 100)}",
                 description = "Average relevance score of retrieved chunks"
             )
         }
@@ -170,7 +171,7 @@ fun StatisticsDashboardScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Text(
-                                    text = "Score: ${"%.2f".format(query.averageRelevanceScore)}",
+                                    text = "Score: ${(round(query.averageRelevanceScore * 100) / 100)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
