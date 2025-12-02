@@ -14,6 +14,8 @@ val json = Json {
         polymorphic(Instructions::class) {
             subclass(Instructions.CallMCPTool::class)
             subclass(Instructions.CallAi::class)
+            subclass(Instructions.RetrieveFromKnowledge::class)
+            subclass(Instructions.AddToKnowledge::class)
         }
     }
     ignoreUnknownKeys = true

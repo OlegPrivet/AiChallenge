@@ -767,7 +767,9 @@ THE CONTENT FIELD IN THE RESPONSE MUST BE OF TYPE JSON OBJECT
           "propertyName": "type",
           "mapping": {
             "CallMCPTool": "#/components/schemas/CallMCPTool",
-            "CallAi": "#/components/schemas/CallAi"
+            "CallAi": "#/components/schemas/CallAi",
+            "RetrieveFromKnowledge": "#/components/schemas/RetrieveFromKnowledge",
+            "AddToKnowledge": "#/components/schemas/AddToKnowledge"
           }
         },
         "oneOf": [
@@ -818,6 +820,44 @@ THE CONTENT FIELD IN THE RESPONSE MUST BE OF TYPE JSON OBJECT
               }
             },
             "required": ["type", "expectedResultOfInstruction", "isCompleted"]
+          },
+          {
+            "type": "object",
+            "name": "RetrieveFromKnowledge",
+            "description": "Retrieve relevant context from the knowledge base using vector similarity search.",
+            "properties": {
+              "type": {"type": "string", "const": "RetrieveFromKnowledge"},
+              "query": {"type": "string", "description": "Search query to find relevant context"},
+              "topK": {"type": "integer", "default": 6, "description": "Number of results to retrieve"},
+              "filters": {"type": "object", "description": "Metadata filters (e.g., {\"sourceType\": \"USER\"})", "additionalProperties": {"type": "string"}},
+              "similarityThreshold": {"type": "number", "default": 0.7, "description": "Minimum similarity score (0.0-1.0)"},
+              "hybridSearchEnabled": {"type": "boolean", "default": false, "description": "Enable hybrid vector+lexical search"},
+              "hybridSearchWeight": {"type": "number", "description": "Weight for hybrid search (null = auto)"},
+              "retrievedContext": {"type": "string", "default": "", "description": "Retrieved context (populated by system)"},
+              "citationCount": {"type": "integer", "default": 0, "description": "Number of citations (populated by system)"},
+              "isCompleted": {"type": "boolean", "description": "Completion status"}
+            },
+            "required": ["type", "query", "isCompleted"]
+          },
+          {
+            "type": "object",
+            "name": "AddToKnowledge",
+            "description": "Add a new document to the knowledge base. Document will be chunked, embedded, and indexed.",
+            "properties": {
+              "type": {"type": "string", "const": "AddToKnowledge"},
+              "title": {"type": "string", "description": "Document title"},
+              "content": {"type": "string", "description": "Document content to ingest"},
+              "description": {"type": "string", "description": "Optional document description"},
+              "sourceType": {"type": "string", "enum": ["USER", "INTERNAL", "REMOTE", "CACHED"], "default": "USER", "description": "Document source type"},
+              "uri": {"type": "string", "description": "Optional source URI"},
+              "metadata": {"type": "object", "description": "Arbitrary metadata", "additionalProperties": {"type": "string"}},
+              "chunkingStrategy": {"type": "string", "enum": ["recursive", "sentence", "character"], "default": "recursive", "description": "Chunking strategy"},
+              "chunkingStrategyParams": {"type": "object", "description": "Strategy parameters", "additionalProperties": {"type": "string"}},
+              "documentId": {"type": "string", "default": "", "description": "Generated ID (populated by system)"},
+              "chunksCreated": {"type": "integer", "default": 0, "description": "Chunks created (populated by system)"},
+              "isCompleted": {"type": "boolean", "description": "Completion status"}
+            },
+            "required": ["type", "title", "content", "isCompleted"]
           }
         ]
       }
