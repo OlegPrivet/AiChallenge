@@ -51,7 +51,6 @@ class ChatOrchestratorService(
     companion object {
         private const val MAX_INSTRUCTION_ITERATIONS = 5
         private const val MAX_INSTRUCTION_DEPTH = 3
-        private const val MAX_RESULT_LENGTH = 2_000
     }
 
     /**
@@ -283,7 +282,7 @@ class ChatOrchestratorService(
                         return InstructionExecutionResult.Error("MCP tool error: $errorMessage")
                     }
 
-                    val resultText = mcpResult.getOrThrow().limitForReport()
+                    val resultText = mcpResult.getOrThrow()
                     executionSummaries.add(
                         InstructionExecutionSummary(
                             title = instruction.name,
@@ -303,7 +302,7 @@ class ChatOrchestratorService(
                     if (executionSummaries.isNotEmpty()) {
                         val contextSummary = executionSummaries.joinToString(separator = "\n") { summary ->
                             "${summary.title}: ${summary.output}"
-                        }.limitForReport()
+                        }
                         instructionMessages.add(
                             ApiChatMessage(
                                 role = ApiMessageRole.USER,
@@ -331,7 +330,7 @@ class ChatOrchestratorService(
                         is OrchestratorResult.Success -> executionSummaries.add(
                             InstructionExecutionSummary(
                                 title = instruction.expectedResultOfInstruction,
-                                output = aiInstructionResult.finalResponse.limitForReport()
+                                output = aiInstructionResult.finalResponse
                             )
                         )
                     }
@@ -469,14 +468,6 @@ class ChatOrchestratorService(
         }
     }
 
-    private fun String.limitForReport(maxLength: Int = MAX_RESULT_LENGTH): String {
-        return if (length > maxLength) {
-            "${take(maxLength)}..."
-        } else {
-            this
-        }
-    }
-
     /**
      * Sends messages to AI and returns the response.
      */
@@ -599,10 +590,7 @@ class ChatOrchestratorService(
             appendLine("Retrieved ${ragResult.results.size} relevant chunks from knowledge base:")
             appendLine()
             appendLine("=== Context ===")
-            appendLine(ragResult.context.take(MAX_RESULT_LENGTH))
-            if (ragResult.context.length > MAX_RESULT_LENGTH) {
-                appendLine("... (truncated)")
-            }
+            appendLine(ragResult.context)
             appendLine()
             appendLine("=== Citations ===")
             ragResult.citations.take(10).forEach { citation ->
@@ -611,7 +599,7 @@ class ChatOrchestratorService(
             if (ragResult.citations.size > 10) {
                 appendLine("... and ${ragResult.citations.size - 10} more")
             }
-        }.limitForReport()
+        }
     }
 
     /**
