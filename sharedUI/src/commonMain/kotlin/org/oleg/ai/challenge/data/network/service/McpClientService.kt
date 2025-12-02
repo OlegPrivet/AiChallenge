@@ -690,7 +690,7 @@ class McpClientService(
                 content.toString()
             } ?: "Tool executed successfully (no content)"
 
-            customLogger.i { "Tool $name executed. Result: ${textContent.take(100)}..." }
+            customLogger.i { "Tool $name executed. Result: $textContent" }
 
             // Check if the result indicates an error
             val isError = result?.isError == true
