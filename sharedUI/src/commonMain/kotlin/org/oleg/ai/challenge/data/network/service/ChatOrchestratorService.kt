@@ -16,6 +16,8 @@ import org.oleg.ai.challenge.data.network.model.Instructions
 import org.oleg.ai.challenge.data.network.model.ResponseContent
 import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.ui.mcp.jsonElementToAny
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 import org.oleg.ai.challenge.data.network.model.ChatMessage as ApiChatMessage
 import org.oleg.ai.challenge.data.network.model.MessageRole as ApiMessageRole
 
@@ -39,6 +41,8 @@ class ChatOrchestratorService(
     private val mcpClientService: McpClientService,
     private val toolValidationService: ToolValidationService,
     private val ragOrchestrator: org.oleg.ai.challenge.domain.rag.orchestrator.RagOrchestrator? = null,
+    private val documentIngestionRepository: org.oleg.ai.challenge.data.rag.repository.DocumentIngestionRepository? = null,
+    private val knowledgeBaseRepository: org.oleg.ai.challenge.domain.rag.repository.KnowledgeBaseRepository? = null,
     private val logger: Logger = Logger.withTag("ChatOrchestratorService"),
 ) {
     private val _mcpUiState = MutableStateFlow(McpUiState())
@@ -332,6 +336,98 @@ class ChatOrchestratorService(
                         )
                     }
                 }
+
+                is Instructions.RetrieveFromKnowledge -> {
+                    if (ragOrchestrator == null) {
+                        return InstructionExecutionResult.Error("RAG is not configured for this chat")
+                    }
+
+                    // Validation
+                    if (instruction.query.isBlank()) {
+                        return InstructionExecutionResult.Error("RetrieveFromKnowledge: query cannot be empty")
+                    }
+                    if (instruction.topK !in 1..100) {
+                        return InstructionExecutionResult.Error("RetrieveFromKnowledge: topK must be between 1 and 100")
+                    }
+                    if (instruction.similarityThreshold !in 0.0..1.0) {
+                        return InstructionExecutionResult.Error("RetrieveFromKnowledge: similarityThreshold must be between 0.0 and 1.0")
+                    }
+
+                    updateMcpState(
+                        isMcpRunning = true,
+                        phase = McpProcessingPhase.InvokingTool
+                    )
+
+                    try {
+                        logger.d { "Executing RetrieveFromKnowledge: query='${instruction.query}', topK=${instruction.topK}" }
+
+                        val ragResult = ragOrchestrator.retrieve(
+                            query = instruction.query,
+                            topK = instruction.topK,
+                            filters = instruction.filters,
+                            similarityThreshold = instruction.similarityThreshold,
+                            hybridSearchEnabled = instruction.hybridSearchEnabled,
+                            hybridSearchWeight = instruction.hybridSearchWeight
+                        )
+
+                        val summary = buildRetrievalSummary(ragResult)
+
+                        executionSummaries.add(
+                            InstructionExecutionSummary(
+                                title = "Knowledge Base Retrieval",
+                                output = summary
+                            )
+                        )
+                    } catch (e: Exception) {
+                        logger.e(e) { "Failed to retrieve from knowledge base" }
+                        return InstructionExecutionResult.Error(
+                            "Knowledge retrieval failed: ${e.message ?: "Unknown error"}"
+                        )
+                    }
+                }
+
+                is Instructions.AddToKnowledge -> {
+                    if (documentIngestionRepository == null || knowledgeBaseRepository == null) {
+                        return InstructionExecutionResult.Error("RAG document ingestion is not configured")
+                    }
+
+                    // Validation
+                    if (instruction.title.isBlank()) {
+                        return InstructionExecutionResult.Error("AddToKnowledge: title cannot be empty")
+                    }
+                    if (instruction.content.isBlank()) {
+                        return InstructionExecutionResult.Error("AddToKnowledge: content cannot be empty")
+                    }
+                    if (instruction.content.length > 1_000_000) {
+                        return InstructionExecutionResult.Error("AddToKnowledge: content too large (max 1MB)")
+                    }
+
+                    updateMcpState(
+                        isMcpRunning = true,
+                        phase = McpProcessingPhase.InvokingTool
+                    )
+
+                    try {
+                        logger.d { "Executing AddToKnowledge: title='${instruction.title}', content length=${instruction.content.length}" }
+
+                        val ingestionResult = ingestKnowledgeDocument(instruction)
+
+                        executionSummaries.add(
+                            InstructionExecutionSummary(
+                                title = "Document Ingestion: \"${instruction.title}\"",
+                                output = "Successfully added document '${instruction.title}' to knowledge base.\n" +
+                                         "Document ID: ${ingestionResult.documentId}\n" +
+                                         "Chunks created: ${ingestionResult.chunksCreated}\n" +
+                                         "Content length: ${instruction.content.length} characters"
+                            )
+                        )
+                    } catch (e: Exception) {
+                        logger.e(e) { "Failed to add document to knowledge base" }
+                        return InstructionExecutionResult.Error(
+                            "Document ingestion failed: ${e.message ?: "Unknown error"}"
+                        )
+                    }
+                }
             }
         }
 
@@ -473,7 +569,7 @@ class ChatOrchestratorService(
             ChatMessage.toolSystemPrompt(
                 index = index,
                 toolName = tool.name,
-                description = tool.description + "IF YOU CHOOSE ME, RETURN ONLY IN THE FORM OF A JSON OBJECT WITH TOOL NAME AND ARGUMENTS {\"name\":\"${tool.name}\",\"arguments\":${tool.parameters.properties}} WITH VALID DATA!!!!\n",
+                description = tool.description + " - IF YOU CHOOSE ME, RETURN ONLY IN THE FORM OF A JSON OBJECT WITH TOOL NAME AND ARGUMENTS {\"name\":\"${tool.name}\",\"arguments\":${tool.parameters.properties}} WITH VALID DATA!!!!\n",
                 agentId = agentId
             )
         }
@@ -494,4 +590,112 @@ class ChatOrchestratorService(
             !(message.isMcpSystemPrompt && message.mcpName == toolName)
         }
     }
+
+    /**
+     * Builds a concise summary of RAG retrieval results for AI consumption.
+     */
+    private fun buildRetrievalSummary(ragResult: org.oleg.ai.challenge.domain.rag.orchestrator.RagResult): String {
+        return buildString {
+            appendLine("Retrieved ${ragResult.results.size} relevant chunks from knowledge base:")
+            appendLine()
+            appendLine("=== Context ===")
+            appendLine(ragResult.context.take(MAX_RESULT_LENGTH))
+            if (ragResult.context.length > MAX_RESULT_LENGTH) {
+                appendLine("... (truncated)")
+            }
+            appendLine()
+            appendLine("=== Citations ===")
+            ragResult.citations.take(10).forEach { citation ->
+                appendLine("[${citation.index}] ${citation.sourceTitle ?: "Untitled"} (Doc: ${citation.documentId})")
+            }
+            if (ragResult.citations.size > 10) {
+                appendLine("... and ${ragResult.citations.size - 10} more")
+            }
+        }.limitForReport()
+    }
+
+    /**
+     * Ingests a document into the knowledge base.
+     */
+    @OptIn(ExperimentalTime::class)
+    private suspend fun ingestKnowledgeDocument(
+        instruction: Instructions.AddToKnowledge
+    ): IngestionResult {
+        val sourceType = try {
+            org.oleg.ai.challenge.domain.rag.model.KnowledgeSourceType.valueOf(
+                instruction.sourceType.uppercase()
+            )
+        } catch (e: IllegalArgumentException) {
+            org.oleg.ai.challenge.domain.rag.model.KnowledgeSourceType.USER
+        }
+
+        val documentId = "doc_${Clock.System.now().toEpochMilliseconds()}_${instruction.title.hashCode().toString(16)}"
+
+        val strategyVersion = when (instruction.chunkingStrategy.lowercase()) {
+            "sentence" -> "sentence-1"
+            "character" -> "character-1"
+            else -> "recursive-1"
+        }
+
+        val document = org.oleg.ai.challenge.domain.rag.model.Document(
+            id = documentId,
+            title = instruction.title,
+            description = instruction.description,
+            sourceType = sourceType,
+            uri = instruction.uri,
+            metadata = instruction.metadata,
+            chunkingStrategyVersion = strategyVersion,
+            embeddingModelVersion = ""
+        )
+
+        val strategy = createChunkingStrategy(
+            instruction.chunkingStrategy,
+            instruction.chunkingStrategyParams
+        )
+
+        documentIngestionRepository!!.ingestDocument(
+            document = document,
+            content = instruction.content,
+            strategy = strategy
+        )
+
+        val chunks = knowledgeBaseRepository!!.getChunks(documentId)
+
+        return IngestionResult(
+            documentId = documentId,
+            chunksCreated = chunks.size
+        )
+    }
+
+    /**
+     * Creates a chunking strategy based on name and parameters.
+     */
+    private fun createChunkingStrategy(
+        strategyName: String,
+        params: Map<String, String>
+    ): org.oleg.ai.challenge.domain.rag.chunking.ChunkingStrategy {
+        return when (strategyName.lowercase()) {
+            "sentence" -> org.oleg.ai.challenge.domain.rag.chunking.SentenceChunkingStrategy(
+                maxCharacters = params["maxCharacters"]?.toIntOrNull() ?: 900,
+                minCharacters = params["minCharacters"]?.toIntOrNull() ?: 200,
+                version = params["version"] ?: "sentence-1"
+            )
+            "character" -> org.oleg.ai.challenge.domain.rag.chunking.CharacterChunkingStrategy(
+                chunkSize = params["chunkSize"]?.toIntOrNull() ?: 500,
+                chunkOverlap = params["chunkOverlap"]?.toIntOrNull() ?: 50,
+                version = params["version"] ?: "char-1"
+            )
+            else -> org.oleg.ai.challenge.domain.rag.chunking.RecursiveChunkingStrategy(
+                version = params["version"] ?: "recursive-1"
+            )
+        }
+    }
+
+    /**
+     * Result of document ingestion.
+     */
+    private data class IngestionResult(
+        val documentId: String,
+        val chunksCreated: Int
+    )
 }

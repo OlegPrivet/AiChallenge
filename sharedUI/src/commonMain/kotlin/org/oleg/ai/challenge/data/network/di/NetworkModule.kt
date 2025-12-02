@@ -58,6 +58,8 @@ val networkModule: Module = module {
             mcpClientService = get(),
             toolValidationService = get(),
             ragOrchestrator = getOrNull(), // Optional: may not be available if RAG is not initialized
+            documentIngestionRepository = getOrNull(), // Optional: may not be available if RAG is not initialized
+            knowledgeBaseRepository = getOrNull(), // Optional: may not be available if RAG is not initialized
             logger = Logger.withTag("ChatOrchestratorService")
         )
     }

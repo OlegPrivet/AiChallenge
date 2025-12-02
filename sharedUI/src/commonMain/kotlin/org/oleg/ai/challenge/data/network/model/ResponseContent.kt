@@ -34,4 +34,34 @@ sealed class Instructions {
         val actualResultOfInstruction: String = "",
         override val isCompleted: Boolean,
     ) : Instructions()
+
+    @Serializable
+    @SerialName("RetrieveFromKnowledge")
+    data class RetrieveFromKnowledge(
+        val query: String,
+        val topK: Int = 6,
+        val filters: Map<String, String> = emptyMap(),
+        val similarityThreshold: Double = 0.5,
+        val hybridSearchEnabled: Boolean = false,
+        val hybridSearchWeight: Double? = null,
+        val retrievedContext: String = "",
+        val citationCount: Int = 0,
+        override val isCompleted: Boolean,
+    ) : Instructions()
+
+    @Serializable
+    @SerialName("AddToKnowledge")
+    data class AddToKnowledge(
+        val title: String,
+        val content: String,
+        val description: String? = null,
+        val sourceType: String = "USER",
+        val uri: String? = null,
+        val metadata: Map<String, String> = emptyMap(),
+        val chunkingStrategy: String = "recursive",
+        val chunkingStrategyParams: Map<String, String> = emptyMap(),
+        val documentId: String = "",
+        val chunksCreated: Int = 0,
+        override val isCompleted: Boolean,
+    ) : Instructions()
 }
