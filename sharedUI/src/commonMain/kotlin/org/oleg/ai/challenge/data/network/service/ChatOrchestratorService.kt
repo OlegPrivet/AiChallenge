@@ -197,10 +197,10 @@ class ChatOrchestratorService(
         temperature: Float,
         depth: Int,
     ): OrchestratorResult {
-        if (depth > MAX_INSTRUCTION_DEPTH) {
-            logger.w { "Instruction depth exceeded" }
-            return OrchestratorResult.Error("Instruction depth exceeded")
-        }
+//        if (depth > MAX_INSTRUCTION_DEPTH) {
+//            logger.w { "Instruction depth exceeded" }
+//            return OrchestratorResult.Error("Instruction depth exceeded")
+//        }
 
         var iteration = 0
         var messages = apiMessages
@@ -292,10 +292,10 @@ class ChatOrchestratorService(
                 }
 
                 is Instructions.CallAi -> {
-                    if (depth >= MAX_INSTRUCTION_DEPTH) {
-                        logger.w { "Max instruction depth reached for CallAi" }
-                        return InstructionExecutionResult.Error("Instruction depth exceeded for AI instruction")
-                    }
+//                    if (depth >= MAX_INSTRUCTION_DEPTH) {
+//                        logger.w { "Max instruction depth reached for CallAi" }
+//                        return InstructionExecutionResult.Error("Instruction depth exceeded for AI instruction")
+//                    }
 
                     val instructionMessages = baseMessages.toMutableList()
 
