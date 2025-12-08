@@ -11,9 +11,7 @@ import org.oleg.ai.challenge.data.model.McpUiState
 import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
-import org.oleg.ai.challenge.data.network.json
 import org.oleg.ai.challenge.data.network.model.Instructions
-import org.oleg.ai.challenge.data.network.model.ResponseContent
 import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.ui.mcp.jsonElementToAny
 import kotlin.time.Clock
@@ -76,7 +74,7 @@ class ChatOrchestratorService(
 
     private sealed class AiCallResult {
         data class Success(
-            val content: ResponseContent,
+            val content: String,
             val model: String,
             val usage: Usage?,
         ) : AiCallResult()
@@ -212,31 +210,36 @@ class ChatOrchestratorService(
                 is AiCallResult.Error -> return OrchestratorResult.Error(aiResult.message)
                 is AiCallResult.Success -> {
                     val responseContent = aiResult.content
-                    val instructions = responseContent.instructions
-
-                    if (instructions.isNullOrEmpty() || instructions.all { it.isCompleted }) {
-                        logger.d { "All instructions completed or absent, returning final response" }
-                        return OrchestratorResult.Success(
-                            finalResponse = responseContent.message,
-                            model = aiResult.model,
-                            usage = aiResult.usage
-                        )
-                    }
-
-                    val instructionExecution = executeInstructions(
-                        instructions = instructions,
-                        baseMessages = messages,
-                        model = model,
-                        temperature = temperature,
-                        depth = depth
+//                    val instructions = responseContent.instructions
+                    return OrchestratorResult.Success(
+                        finalResponse = responseContent,
+                        model = aiResult.model,
+                        usage = aiResult.usage
                     )
 
-                    when (instructionExecution) {
-                        is InstructionExecutionResult.Error -> return OrchestratorResult.Error(instructionExecution.message)
-                        is InstructionExecutionResult.ContinueWith -> {
-                            messages = instructionExecution.messages
-                        }
-                    }
+//                    if (instructions.isNullOrEmpty() || instructions.all { it.isCompleted }) {
+//                        logger.d { "All instructions completed or absent, returning final response" }
+//                        return OrchestratorResult.Success(
+//                            finalResponse = responseContent.message,
+//                            model = aiResult.model,
+//                            usage = aiResult.usage
+//                        )
+//                    }
+//
+//                    val instructionExecution = executeInstructions(
+//                        instructions = instructions,
+//                        baseMessages = messages,
+//                        model = model,
+//                        temperature = temperature,
+//                        depth = depth
+//                    )
+//
+//                    when (instructionExecution) {
+//                        is InstructionExecutionResult.Error -> return OrchestratorResult.Error(instructionExecution.message)
+//                        is InstructionExecutionResult.ContinueWith -> {
+//                            messages = instructionExecution.messages
+//                        }
+//                    }
                 }
             }
         }
@@ -487,9 +490,9 @@ class ChatOrchestratorService(
                 val resultString = result.data.choices.firstOrNull()?.message?.content
                     ?: return AiCallResult.Error("Empty response from AI")
 
-                val responseContent = json.decodeFromString<ResponseContent>(resultString)
+//                val responseContent = json.decodeFromString<ResponseContent>(resultString)
                 AiCallResult.Success(
-                    content = responseContent,
+                    content = resultString,
                     model = result.data.model,
                     usage = result.data.usage
                 )

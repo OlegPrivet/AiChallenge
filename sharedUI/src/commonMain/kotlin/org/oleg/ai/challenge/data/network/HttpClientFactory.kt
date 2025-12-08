@@ -64,7 +64,7 @@ object HttpClientFactory {
             install(DefaultRequest) {
                 url(BuildConfig.OPENROUTER_BASE_URL)
                 header(HttpHeaders.ContentType, ContentType.Application.Json)
-                header(HttpHeaders.Authorization, "Bearer $apiKey")
+//                header(HttpHeaders.Authorization, "Bearer $apiKey")
             }
 
             // Expect Success (throws exception on non-2xx responses)

@@ -83,7 +83,7 @@ class DefaultChatComponent(
     init {
         // Observe MCP UI state changes from the orchestrator
         scope.launch {
-            setZygotePrompt()
+//            setZygotePrompt()
 
             chatOrchestratorService.mcpUiState
                 .onEach { state ->

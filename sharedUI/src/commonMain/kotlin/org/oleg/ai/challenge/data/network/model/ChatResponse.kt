@@ -17,7 +17,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ChatResponse(
     val id: String,
-    val provider: String,
+    val provider: String? = null,
     val model: String,
     @SerialName("object")
     val objectType: String,
@@ -41,7 +41,7 @@ data class ChatChoice(
     @SerialName("finish_reason")
     val finishReason: String,
     @SerialName("native_finish_reason")
-    val nativeFinishReason: String,
+    val nativeFinishReason: String? = null,
     val index: Int,
     val message: AssistantMessage
 )
