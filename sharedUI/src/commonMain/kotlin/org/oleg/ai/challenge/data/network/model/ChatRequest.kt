@@ -13,7 +13,14 @@ import kotlinx.serialization.Serializable
 data class ChatRequest(
     val model: String,
     val messages: List<ChatMessage>,
-    val temperature: Float? = null
+    val options: Options = Options(),
+    val temperature: Float? = null,
+    val max_tokens: Int = 150,
+)
+
+@Serializable
+data class Options(
+    val num_thread: Int = 4
 )
 
 /**
