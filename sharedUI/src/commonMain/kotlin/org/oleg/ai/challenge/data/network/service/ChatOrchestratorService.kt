@@ -11,11 +11,11 @@ import org.oleg.ai.challenge.data.model.McpUiState
 import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
-import org.oleg.ai.challenge.data.network.model.Instructions
+import org.oleg.ai.challenge.data.network.json
+import org.oleg.ai.challenge.data.network.model.ToolCall
+import org.oleg.ai.challenge.data.network.model.ToolDefinition
+import org.oleg.ai.challenge.data.network.model.ToolFunction
 import org.oleg.ai.challenge.data.network.model.Usage
-import org.oleg.ai.challenge.ui.mcp.jsonElementToAny
-import kotlin.time.Clock
-import kotlin.time.ExperimentalTime
 import org.oleg.ai.challenge.data.network.model.ChatMessage as ApiChatMessage
 import org.oleg.ai.challenge.data.network.model.MessageRole as ApiMessageRole
 
@@ -75,22 +75,13 @@ class ChatOrchestratorService(
     private sealed class AiCallResult {
         data class Success(
             val content: String,
+            val toolCalls: List<ToolCall>?,
             val model: String,
             val usage: Usage?,
         ) : AiCallResult()
 
         data class Error(val message: String) : AiCallResult()
     }
-
-    private sealed class InstructionExecutionResult {
-        data class ContinueWith(val messages: MutableList<ApiChatMessage>) : InstructionExecutionResult()
-        data class Error(val message: String) : InstructionExecutionResult()
-    }
-
-    private data class InstructionExecutionSummary(
-        val title: String,
-        val output: String,
-    )
 
     /**
      * Handles a user message with full MCP orchestration.
@@ -195,306 +186,192 @@ class ChatOrchestratorService(
         temperature: Float,
         depth: Int,
     ): OrchestratorResult {
-//        if (depth > MAX_INSTRUCTION_DEPTH) {
-//            logger.w { "Instruction depth exceeded" }
-//            return OrchestratorResult.Error("Instruction depth exceeded")
-//        }
+/*        if (depth > MAX_INSTRUCTION_DEPTH) {
+            logger.w { "Tool call depth exceeded" }
+            return OrchestratorResult.Error("Tool call depth exceeded")
+        }*/
 
-        var iteration = 0
-        var messages = apiMessages
+        when (val aiResult = sendToAi(apiMessages, model, temperature)) {
+            is AiCallResult.Error -> return OrchestratorResult.Error(aiResult.message)
+            is AiCallResult.Success -> {
+                val toolCalls = aiResult.toolCalls
 
-        while (iteration < MAX_INSTRUCTION_ITERATIONS) {
-            iteration++
-
-            when (val aiResult = sendToAi(messages, model, temperature)) {
-                is AiCallResult.Error -> return OrchestratorResult.Error(aiResult.message)
-                is AiCallResult.Success -> {
-                    val responseContent = aiResult.content
-//                    val instructions = responseContent.instructions
-                    return OrchestratorResult.Success(
-                        finalResponse = responseContent,
-                        model = aiResult.model,
-                        usage = aiResult.usage
-                    )
-
-//                    if (instructions.isNullOrEmpty() || instructions.all { it.isCompleted }) {
-//                        logger.d { "All instructions completed or absent, returning final response" }
-//                        return OrchestratorResult.Success(
-//                            finalResponse = responseContent.message,
-//                            model = aiResult.model,
-//                            usage = aiResult.usage
-//                        )
-//                    }
-//
-//                    val instructionExecution = executeInstructions(
-//                        instructions = instructions,
-//                        baseMessages = messages,
-//                        model = model,
-//                        temperature = temperature,
-//                        depth = depth
-//                    )
-//
-//                    when (instructionExecution) {
-//                        is InstructionExecutionResult.Error -> return OrchestratorResult.Error(instructionExecution.message)
-//                        is InstructionExecutionResult.ContinueWith -> {
-//                            messages = instructionExecution.messages
-//                        }
-//                    }
-                }
-            }
-        }
-
-        logger.w { "Instruction processing exceeded $MAX_INSTRUCTION_ITERATIONS iterations" }
-        return OrchestratorResult.Error("Instruction processing exceeded limit")
-    }
-
-    private suspend fun executeInstructions(
-        instructions: List<Instructions>,
-        baseMessages: MutableList<ApiChatMessage>,
-        model: String,
-        temperature: Float,
-        depth: Int,
-    ): InstructionExecutionResult {
-        val executionSummaries = mutableListOf<InstructionExecutionSummary>()
-        val updatedMessages = baseMessages.toMutableList()
-
-        instructions.forEach { instruction ->
-            if (instruction.isCompleted) return@forEach
-
-            when (instruction) {
-                is Instructions.CallMCPTool -> {
-                    updateMcpState(
-                        isMcpRunning = true,
-                        phase = McpProcessingPhase.InvokingTool,
-                        currentToolName = instruction.name
-                    )
-
-                    val argsMap = try {
-                        instruction.arguments.toArgumentMap()
-                    } catch (e: Exception) {
-                        logger.e(e) { "Failed to parse arguments for ${instruction.name}" }
-                        return InstructionExecutionResult.Error(
-                            "Failed to parse arguments for ${instruction.name}: ${e.message ?: "Unknown error"}"
-                        )
-                    }
-
-                    val mcpResult = mcpClientService.callTool(instruction.name, argsMap)
-                    if (mcpResult.isFailure) {
-                        val errorMessage = mcpResult.exceptionOrNull()?.message ?: "Unknown MCP error"
-                        logger.e { "MCP tool call failed: $errorMessage" }
-                        return InstructionExecutionResult.Error("MCP tool error: $errorMessage")
-                    }
-
-                    val resultText = mcpResult.getOrThrow()
-                    executionSummaries.add(
-                        InstructionExecutionSummary(
-                            title = instruction.name,
-                            output = resultText
-                        )
-                    )
-                }
-
-                is Instructions.CallAi -> {
-//                    if (depth >= MAX_INSTRUCTION_DEPTH) {
-//                        logger.w { "Max instruction depth reached for CallAi" }
-//                        return InstructionExecutionResult.Error("Instruction depth exceeded for AI instruction")
-//                    }
-
-                    val instructionMessages = baseMessages.toMutableList()
-
-                    if (executionSummaries.isNotEmpty()) {
-                        val contextSummary = executionSummaries.joinToString(separator = "\n") { summary ->
-                            "${summary.title}: ${summary.output}"
-                        }
-                        instructionMessages.add(
-                            ApiChatMessage(
-                                role = ApiMessageRole.USER,
-                                content = "Context from executed instructions:\n$contextSummary"
-                            )
-                        )
-                    }
-
-                    instructionMessages.add(
-                        ApiChatMessage(
-                            role = ApiMessageRole.USER,
-                            content = instruction.expectedResultOfInstruction
-                        )
-                    )
-
-                    val aiInstructionResult = runConversationFlow(
-                        apiMessages = instructionMessages,
+                // If AI wants to call tools, execute them and continue
+                if (toolCalls != null && toolCalls.isNotEmpty()) {
+                    logger.d { "AI requested ${toolCalls.size} tool calls" }
+                    return handleToolCalls(
+                        toolCalls = toolCalls,
+                        conversationHistory = apiMessages,
+                        assistantMessage = aiResult.content,
                         model = model,
                         temperature = temperature,
-                        depth = depth + 1
+                        depth = depth
                     )
-
-                    when (aiInstructionResult) {
-                        is OrchestratorResult.Error -> return InstructionExecutionResult.Error(aiInstructionResult.message)
-                        is OrchestratorResult.Success -> executionSummaries.add(
-                            InstructionExecutionSummary(
-                                title = instruction.expectedResultOfInstruction,
-                                output = aiInstructionResult.finalResponse
-                            )
-                        )
-                    }
                 }
 
-                is Instructions.RetrieveFromKnowledge -> {
-                    if (ragOrchestrator == null) {
-                        return InstructionExecutionResult.Error("RAG is not configured for this chat")
-                    }
-
-                    // Validation
-                    if (instruction.query.isBlank()) {
-                        return InstructionExecutionResult.Error("RetrieveFromKnowledge: query cannot be empty")
-                    }
-                    if (instruction.topK !in 1..100) {
-                        return InstructionExecutionResult.Error("RetrieveFromKnowledge: topK must be between 1 and 100")
-                    }
-                    if (instruction.similarityThreshold !in 0.0..1.0) {
-                        return InstructionExecutionResult.Error("RetrieveFromKnowledge: similarityThreshold must be between 0.0 and 1.0")
-                    }
-
-                    updateMcpState(
-                        isMcpRunning = true,
-                        phase = McpProcessingPhase.InvokingTool
-                    )
-
-                    try {
-                        logger.d { "Executing RetrieveFromKnowledge: query='${instruction.query}', topK=${instruction.topK}" }
-
-                        val ragResult = ragOrchestrator.retrieve(
-                            query = instruction.query,
-                            topK = instruction.topK,
-                            filters = instruction.filters,
-                            similarityThreshold = instruction.similarityThreshold,
-                            hybridSearchEnabled = instruction.hybridSearchEnabled,
-                            hybridSearchWeight = instruction.hybridSearchWeight
-                        )
-
-                        val summary = buildRetrievalSummary(ragResult)
-
-                        executionSummaries.add(
-                            InstructionExecutionSummary(
-                                title = "Knowledge Base Retrieval",
-                                output = summary
-                            )
-                        )
-                    } catch (e: Exception) {
-                        logger.e(e) { "Failed to retrieve from knowledge base" }
-                        return InstructionExecutionResult.Error(
-                            "Knowledge retrieval failed: ${e.message ?: "Unknown error"}"
-                        )
-                    }
-                }
-
-                is Instructions.AddToKnowledge -> {
-                    if (documentIngestionRepository == null || knowledgeBaseRepository == null) {
-                        return InstructionExecutionResult.Error("RAG document ingestion is not configured")
-                    }
-
-                    // Validation
-                    if (instruction.title.isBlank()) {
-                        return InstructionExecutionResult.Error("AddToKnowledge: title cannot be empty")
-                    }
-                    if (instruction.content.isBlank()) {
-                        return InstructionExecutionResult.Error("AddToKnowledge: content cannot be empty")
-                    }
-                    if (instruction.content.length > 1_000_000) {
-                        return InstructionExecutionResult.Error("AddToKnowledge: content too large (max 1MB)")
-                    }
-
-                    updateMcpState(
-                        isMcpRunning = true,
-                        phase = McpProcessingPhase.InvokingTool
-                    )
-
-                    try {
-                        logger.d { "Executing AddToKnowledge: title='${instruction.title}', content length=${instruction.content.length}" }
-
-                        val ingestionResult = ingestKnowledgeDocument(instruction)
-
-                        executionSummaries.add(
-                            InstructionExecutionSummary(
-                                title = "Document Ingestion: \"${instruction.title}\"",
-                                output = "Successfully added document '${instruction.title}' to knowledge base.\n" +
-                                         "Document ID: ${ingestionResult.documentId}\n" +
-                                         "Chunks created: ${ingestionResult.chunksCreated}\n" +
-                                         "Content length: ${instruction.content.length} characters"
-                            )
-                        )
-                    } catch (e: Exception) {
-                        logger.e(e) { "Failed to add document to knowledge base" }
-                        return InstructionExecutionResult.Error(
-                            "Document ingestion failed: ${e.message ?: "Unknown error"}"
-                        )
-                    }
-                }
+                // No tool calls - this is the final response
+                logger.d { "AI returned final response without tool calls" }
+                return OrchestratorResult.Success(
+                    finalResponse = aiResult.content,
+                    model = aiResult.model,
+                    usage = aiResult.usage
+                )
             }
-        }
-
-        if (executionSummaries.isEmpty()) {
-            return InstructionExecutionResult.ContinueWith(updatedMessages)
-        }
-
-        updateMcpState(
-            isMcpRunning = true,
-            phase = McpProcessingPhase.GeneratingFinalResponse
-        )
-
-        val followUpPrompt = buildInstructionReport(executionSummaries)
-        updatedMessages.add(
-            ApiChatMessage(
-                role = ApiMessageRole.USER,
-                content = followUpPrompt
-            )
-        )
-
-        return InstructionExecutionResult.ContinueWith(updatedMessages)
-    }
-
-    private fun buildInstructionReport(executions: List<InstructionExecutionSummary>): String {
-        return buildString {
-            append("The following instructions were executed automatically and marked as completed:\n")
-            executions.forEachIndexed { index, summary ->
-                append("${index + 1}. ${summary.title}\n")
-                append("Result: ${summary.output}\n")
-            }
-            append("Return the next ResponseContent JSON. Mark executed instructions with isCompleted=true, ")
-            append("fill actualResultOfInstruction where it applies, and include remaining instructions if more work is needed.")
-        }
-    }
-
-    private fun JsonObject.toArgumentMap(): Map<String, Any> {
-        return this.mapValues { (_, value) ->
-            jsonElementToAny(value)
         }
     }
 
     /**
-     * Sends messages to AI and returns the response.
+     * Builds tool definitions from MCP available tools.
+     *
+     * @return List of ToolDefinition or null if no tools available
+     */
+    private fun buildToolsFromMcp(): List<ToolDefinition>? {
+        val mcpTools = mcpClientService.availableTools.value
+
+        if (mcpTools.isEmpty()) {
+            logger.d { "No MCP tools available" }
+            return null
+        }
+
+        logger.d { "Building tool definitions for ${mcpTools.size} MCP tools" }
+        return mcpTools.map { mcpTool ->
+            ToolDefinition(
+                type = "function",
+                function = ToolFunction(
+                    name = mcpTool.name,
+                    description = mcpTool.description ?: "",
+                    parameters = mcpTool.parameters.properties
+                )
+            )
+        }
+    }
+
+    /**
+     * Executes a single tool call and returns the result as a string.
+     *
+     * @param toolCall The tool call to execute
+     * @return The result of the tool execution as a string
+     */
+    private suspend fun executeToolCall(toolCall: ToolCall): String {
+        logger.d { "Executing tool call: ${toolCall.function.name}" }
+        updateMcpState(
+            isMcpRunning = true,
+            phase = McpProcessingPhase.InvokingTool,
+            currentToolName = toolCall.function.name
+        )
+
+        return try {
+            val arguments = json.decodeFromString<JsonObject>(toolCall.function.arguments)
+            val argsMap = arguments.mapValues { (_, value) ->
+                when (value) {
+                    is kotlinx.serialization.json.JsonPrimitive -> {
+                        value.content
+                    }
+                    else -> value.toString()
+                }
+            }
+
+            val result = mcpClientService.callTool(
+                name = toolCall.function.name,
+                arguments = argsMap
+            )
+
+            if (result.isSuccess) {
+                logger.d { "Tool call succeeded: ${toolCall.function.name}" }
+                result.getOrThrow()
+            } else {
+                val error = result.exceptionOrNull()?.message ?: "Unknown error"
+                logger.e { "Tool call failed: ${toolCall.function.name} - $error" }
+                "Error: $error"
+            }
+        } catch (e: Exception) {
+            logger.e(e) { "Exception executing tool call: ${toolCall.function.name}" }
+            "Error executing tool: ${e.message}"
+        }
+    }
+
+    /**
+     * Handles tool calls from AI response.
+     * Executes each tool, adds results to conversation history, and recursively calls AI again.
+     *
+     * @param toolCalls List of tool calls from AI
+     * @param conversationHistory Current conversation history
+     * @param model The AI model to use
+     * @param temperature The temperature setting
+     * @return OrchestratorResult with the final response
+     */
+    private suspend fun handleToolCalls(
+        toolCalls: List<ToolCall>,
+        conversationHistory: MutableList<ApiChatMessage>,
+        assistantMessage: String,
+        model: String,
+        temperature: Float,
+        depth: Int
+    ): OrchestratorResult {
+        logger.d { "Handling ${toolCalls.size} tool calls" }
+
+        // Add assistant message (may be empty when tool calls are present)
+        conversationHistory.add(
+            ApiChatMessage(
+                role = ApiMessageRole.ASSISTANT,
+                content = assistantMessage
+            )
+        )
+
+        // Execute each tool call and add results to history
+        for (toolCall in toolCalls) {
+            val toolResult = executeToolCall(toolCall)
+
+            // Add tool result to conversation history
+            conversationHistory.add(
+                ApiChatMessage(
+                    role = org.oleg.ai.challenge.data.network.model.MessageRole.TOOL,
+                    content = toolResult,
+                    toolCallId = toolCall.id
+                )
+            )
+        }
+
+        // Continue the conversation flow with updated history
+        return runConversationFlow(
+            apiMessages = conversationHistory,
+            model = model,
+            temperature = temperature,
+            depth = depth + 1
+        )
+    }
+
+    /**
+     * Sends messages to AI and returns the response with tool calls if any.
      */
     private suspend fun sendToAi(
         messages: List<ApiChatMessage>,
         model: String,
         temperature: Float,
     ): AiCallResult {
+        val tools = buildToolsFromMcp()
+
         val request = createConversationRequest(
             messages = messages,
             model = model,
-            temperature = temperature
+            temperature = temperature,
+            tools = tools
         )
 
         return when (val result = chatApiService.sendChatCompletion(request)) {
             is ApiResult.Success -> {
-                val resultString = result.data.choices.firstOrNull()?.message?.content
-                    ?: return AiCallResult.Error("Empty response from AI")
+                val response = result.data
+                val toolCalls = response.message.toolCalls
 
-//                val responseContent = json.decodeFromString<ResponseContent>(resultString)
                 AiCallResult.Success(
-                    content = resultString,
-                    model = result.data.model,
-                    usage = result.data.usage
+                    content = response.message.content,
+                    toolCalls = toolCalls,
+                    model = response.model,
+                    usage = Usage(
+                        promptTokens = response.promptEvalCount ?: 0,
+                        completionTokens = response.evalCount ?: 0,
+                        totalTokens = (response.promptEvalCount ?: 0) + (response.evalCount ?: 0)
+                    )
                 )
             }
 
@@ -553,140 +430,4 @@ class ChatOrchestratorService(
      * @param agentId The agent ID to associate prompts with
      * @return List of system prompt messages for the tools
      */
-    fun createToolSystemPrompts(
-        enabledTools: List<McpClientService.ToolInfo>,
-        agentId: String? = null,
-    ): List<ChatMessage> {
-        var index = 0
-        return enabledTools.map { tool ->
-            index++
-            ChatMessage.toolSystemPrompt(
-                index = index,
-                toolName = tool.name,
-                description = tool.description + " - IF YOU CHOOSE ME, RETURN ONLY IN THE FORM OF A JSON OBJECT WITH TOOL NAME AND ARGUMENTS {\"name\":\"${tool.name}\",\"arguments\":${tool.parameters.properties}} WITH VALID DATA!!!!\n",
-                agentId = agentId
-            )
-        }
-    }
-
-    /**
-     * Removes system prompts for a specific tool from the message history.
-     *
-     * @param messages Current message list
-     * @param toolName Name of the tool to remove prompts for
-     * @return Updated message list without the tool's prompts
-     */
-    fun removeToolSystemPrompts(
-        messages: List<ChatMessage>,
-        toolName: String,
-    ): List<ChatMessage> {
-        return messages.filter { message ->
-            !(message.isMcpSystemPrompt && message.mcpName == toolName)
-        }
-    }
-
-    /**
-     * Builds a concise summary of RAG retrieval results for AI consumption.
-     */
-    private fun buildRetrievalSummary(ragResult: org.oleg.ai.challenge.domain.rag.orchestrator.RagResult): String {
-        return buildString {
-            appendLine("Retrieved ${ragResult.results.size} relevant chunks from knowledge base:")
-            appendLine()
-            appendLine("=== Context ===")
-            appendLine(ragResult.context)
-            appendLine()
-            appendLine("=== Citations ===")
-            ragResult.citations.take(10).forEach { citation ->
-                appendLine("[${citation.index}] ${citation.sourceTitle ?: "Untitled"} (Doc: ${citation.documentId})")
-            }
-            if (ragResult.citations.size > 10) {
-                appendLine("... and ${ragResult.citations.size - 10} more")
-            }
-        }
-    }
-
-    /**
-     * Ingests a document into the knowledge base.
-     */
-    @OptIn(ExperimentalTime::class)
-    private suspend fun ingestKnowledgeDocument(
-        instruction: Instructions.AddToKnowledge
-    ): IngestionResult {
-        val sourceType = try {
-            org.oleg.ai.challenge.domain.rag.model.KnowledgeSourceType.valueOf(
-                instruction.sourceType.uppercase()
-            )
-        } catch (e: IllegalArgumentException) {
-            org.oleg.ai.challenge.domain.rag.model.KnowledgeSourceType.USER
-        }
-
-        val documentId = "doc_${Clock.System.now().toEpochMilliseconds()}_${instruction.title.hashCode().toString(16)}"
-
-        val strategyVersion = when (instruction.chunkingStrategy.lowercase()) {
-            "sentence" -> "sentence-1"
-            "character" -> "character-1"
-            else -> "recursive-1"
-        }
-
-        val document = org.oleg.ai.challenge.domain.rag.model.Document(
-            id = documentId,
-            title = instruction.title,
-            description = instruction.description,
-            sourceType = sourceType,
-            uri = instruction.uri,
-            metadata = instruction.metadata,
-            chunkingStrategyVersion = strategyVersion,
-            embeddingModelVersion = ""
-        )
-
-        val strategy = createChunkingStrategy(
-            instruction.chunkingStrategy,
-            instruction.chunkingStrategyParams
-        )
-
-        documentIngestionRepository!!.ingestDocument(
-            document = document,
-            content = instruction.content,
-            strategy = strategy
-        )
-
-        val chunks = knowledgeBaseRepository!!.getChunks(documentId)
-
-        return IngestionResult(
-            documentId = documentId,
-            chunksCreated = chunks.size
-        )
-    }
-
-    /**
-     * Creates a chunking strategy based on name and parameters.
-     */
-    private fun createChunkingStrategy(
-        strategyName: String,
-        params: Map<String, String>
-    ): org.oleg.ai.challenge.domain.rag.chunking.ChunkingStrategy {
-        return when (strategyName.lowercase()) {
-            "sentence" -> org.oleg.ai.challenge.domain.rag.chunking.SentenceChunkingStrategy(
-                maxCharacters = params["maxCharacters"]?.toIntOrNull() ?: 900,
-                minCharacters = params["minCharacters"]?.toIntOrNull() ?: 200,
-                version = params["version"] ?: "sentence-1"
-            )
-            "character" -> org.oleg.ai.challenge.domain.rag.chunking.CharacterChunkingStrategy(
-                chunkSize = params["chunkSize"]?.toIntOrNull() ?: 500,
-                chunkOverlap = params["chunkOverlap"]?.toIntOrNull() ?: 50,
-                version = params["version"] ?: "char-1"
-            )
-            else -> org.oleg.ai.challenge.domain.rag.chunking.RecursiveChunkingStrategy(
-                version = params["version"] ?: "recursive-1"
-            )
-        }
-    }
-
-    /**
-     * Result of document ingestion.
-     */
-    private data class IngestionResult(
-        val documentId: String,
-        val chunksCreated: Int
-    )
 }

@@ -18,11 +18,13 @@ import org.oleg.ai.challenge.data.model.McpUiState
 import org.oleg.ai.challenge.data.model.MessageRole
 import org.oleg.ai.challenge.data.network.ApiResult
 import org.oleg.ai.challenge.data.network.createConversationRequest
+import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.data.network.service.ChatApiService
 import org.oleg.ai.challenge.data.network.service.ChatOrchestratorService
 import org.oleg.ai.challenge.data.network.service.McpClientService
 import org.oleg.ai.challenge.data.repository.ChatRepository
 import org.oleg.ai.challenge.domain.command.CommandOrchestrator
+import org.oleg.ai.challenge.domain.rag.orchestrator.Citation
 import kotlin.time.Clock.System
 import kotlin.time.ExperimentalTime
 
@@ -83,7 +85,7 @@ class DefaultChatComponent(
     init {
         // Observe MCP UI state changes from the orchestrator
         scope.launch {
-//            setZygotePrompt()
+            setZygotePrompt()
 
             chatOrchestratorService.mcpUiState
                 .onEach { state ->
@@ -103,57 +105,9 @@ class DefaultChatComponent(
             updateCurrentAgentModel()
             updateCurrentTemperature()
 
-            // Inject tool system prompts when tools become available
-            mcpClientService.availableTools
-                .onEach { tools ->
-                    if (tools.isNotEmpty()) {
-                        injectToolSystemPrompts(tools)
-                    }
-                }
-                .launchIn(scope)
+            // Note: With native tool calling, tool system prompts are no longer needed.
+            // Tools are now passed directly via the ChatRequest.tools field.
         }
-    }
-
-    /**
-     * Injects system prompts for available MCP tools into the message history.
-     */
-    @OptIn(ExperimentalTime::class)
-    private suspend fun injectToolSystemPrompts(tools: List<McpClientService.ToolInfo>) {
-        // Remove existing tool prompts
-        allMessages.removeAll { it.isMcpSystemPrompt }
-
-        allMessages.add(
-            0, ChatMessage(
-                id = "${System.now()}_tool_system",
-                text = """In the instructions for the user, YOU MUST request the following tools""".trimIndent(),
-                isFromUser = false,
-                timestamp = 0,
-                role = MessageRole.SYSTEM,
-                isVisibleInUI = false,
-                agentName = "",
-                agentId = "",
-                modelUsed = "",
-                usage = null,
-                mcpName = "",
-                isMcpSystemPrompt = true,
-                isMcpIntermediate = false
-
-            )
-        )
-        // Create and add new tool prompts (no agentId - they're global)
-        val toolPrompts = chatOrchestratorService.createToolSystemPrompts(
-            enabledTools = tools,
-            agentId = null
-        )
-
-        // Insert tool prompts at the beginning (before all other messages)
-        allMessages.addAll(toolPrompts)
-        chatRepository.saveMessages(chatId!!, allMessages)
-
-        logger.d { "Injected ${toolPrompts.size} tool system prompts" }
-
-        // Update displayed messages after injection
-        updateDisplayedMessages()
     }
 
     /**
@@ -356,7 +310,7 @@ class DefaultChatComponent(
     private suspend fun sendNormalMessage(
         messageText: String,
         currentAgent: Agent,
-        currentAgentId: String
+        currentAgentId: String,
     ) {
         // Add user message to the message history
         val userMessage = ChatMessage(
@@ -466,7 +420,7 @@ class DefaultChatComponent(
         originalCommand: String,
         transformedMessage: String,
         currentAgent: Agent,
-        currentAgentId: String
+        currentAgentId: String,
     ) {
         // Add original command to chat history (user sees what they typed)
         val userMessage = ChatMessage(
@@ -634,40 +588,39 @@ class DefaultChatComponent(
 
                 when (result) {
                     is ApiResult.Success -> {
-                        val summaryText = result.data.choices.firstOrNull()?.message?.content
-                        if (summaryText != null) {
-                            // Add summary message (visible)
-                            val summaryMessage = ChatMessage(
-                                id = generateId(),
-                                text = summaryText,
-                                isFromUser = false,
-                                role = MessageRole.ASSISTANT,
-                                isVisibleInUI = true,
-                                agentName = currentAgent.name,
-                                agentId = currentAgentId,
-                                modelUsed = result.data.model,
-                                usage = result.data.usage
+                        val summaryText = result.data.message.content
+                        // Add summary message (visible)
+                        val summaryMessage = ChatMessage(
+                            id = generateId(),
+                            text = summaryText,
+                            isFromUser = false,
+                            role = MessageRole.ASSISTANT,
+                            isVisibleInUI = true,
+                            agentName = currentAgent.name,
+                            agentId = currentAgentId,
+                            modelUsed = result.data.model,
+                            usage = Usage(
+                                promptTokens = result.data.promptEvalCount ?: 0,
+                                completionTokens = result.data.evalDuration?.toInt() ?: 0,
+                                totalTokens = result.data.totalDuration?.toInt() ?: 0
                             )
+                        )
 
-                            // Save summary message to repository if chatId is available
-                            if (chatId != null) {
-                                scope.launch {
-                                    try {
-                                        chatRepository.saveMessage(chatId, summaryMessage)
-                                        logger.d { "Saved summary message to chat $chatId" }
-                                    } catch (e: Exception) {
-                                        logger.e(e) { "Failed to save summary message to repository" }
-                                    }
+                        // Save summary message to repository if chatId is available
+                        if (chatId != null) {
+                            scope.launch {
+                                try {
+                                    chatRepository.saveMessage(chatId, summaryMessage)
+                                    logger.d { "Saved summary message to chat $chatId" }
+                                } catch (e: Exception) {
+                                    logger.e(e) { "Failed to save summary message to repository" }
                                 }
                             }
-
-                            // Clear history and rebuild with preserved messages
-                            clearHistoryKeepingPrompts(currentAgentId, summaryMessage)
-                            logger.d { "Conversation summarized and history cleared for agent $currentAgentId" }
-                        } else {
-                            logger.w { "Summary response is null" }
-                            addErrorMessage(currentAgentId, "Failed to generate summary")
                         }
+
+                        // Clear history and rebuild with preserved messages
+                        clearHistoryKeepingPrompts(currentAgentId, summaryMessage)
+                        logger.d { "Conversation summarized and history cleared for agent $currentAgentId" }
                     }
 
                     is ApiResult.Error -> {
@@ -743,130 +696,12 @@ class DefaultChatComponent(
         allMessages.clear()
         allMessages.add(
             ChatMessage(
-                id = "RULE 1",
+                id = "RULE 0",
                 text = """
 #MAIN RULE
-IN YOUR RESPONSES, YOU MUST ALWAYS FOLLOW THE RESPONSE STRUCTURE IN THE JSON OBJECT
-THE CONTENT FIELD IN THE RESPONSE MUST BE OF TYPE JSON OBJECT
-{
-  "type": "object",
-  "name": "ResponseContent",
-  "description": "Container with a message and optional list of execution instructions.",
-  "properties": {
-    "message": {
-      "type": "string",
-      "description": "Primary text message returned by the system."
-    },
-    "instructions": {
-      "type": "array",
-      "description": "Optional ordered list of instructions to perform.",
-      "items": {
-        "type": "object",
-        "description": "Polymorphic instruction. Selected by the `type` discriminator.",
-        "discriminator": {
-          "propertyName": "type",
-          "mapping": {
-            "CallMCPTool": "#/components/schemas/CallMCPTool",
-            "CallAi": "#/components/schemas/CallAi",
-            "RetrieveFromKnowledge": "#/components/schemas/RetrieveFromKnowledge",
-            "AddToKnowledge": "#/components/schemas/AddToKnowledge"
-          }
-        },
-        "oneOf": [
-          {
-            "type": "object",
-            "name": "CallMCPTool",
-            "description": "Instruction to call an MCP tool with arguments.",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "CallMCPTool"
-              },
-              "name": {
-                "type": "string",
-                "description": "The name of the tool to invoke."
-              },
-              "arguments": {
-                "type": "object",
-                "description": "Raw JSON object of tool arguments."
-              },
-              "isCompleted": {
-                "type": "boolean",
-                "description": "Indicates whether this instruction has completed."
-              }
-            },
-            "required": ["type", "name", "arguments", "isCompleted"]
-          },
-          {
-            "type": "object",
-            "name": "CallAi",
-            "description": "Instruction to execute an AI step and compare expected vs actual output.",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "CallAi"
-              },
-              "expectedResultOfInstruction": {
-                "type": "string",
-                "description": "Description of the expected output from this AI instruction."
-              },
-              "actualResultOfInstruction": {
-                "type": "string",
-                "description": "Actual output produced by the AI instruction."
-              },
-              "isCompleted": {
-                "type": "boolean",
-                "description": "Indicates whether this instruction has completed."
-              }
-            },
-            "required": ["type", "expectedResultOfInstruction", "isCompleted"]
-          },
-          {
-            "type": "object",
-            "name": "RetrieveFromKnowledge",
-            "description": "Retrieve relevant context from the knowledge base using vector similarity search.",
-            "properties": {
-              "type": {"type": "string", "const": "RetrieveFromKnowledge"},
-              "query": {"type": "string", "description": "Search query to find relevant context"},
-              "topK": {"type": "integer", "default": 6, "description": "Number of results to retrieve"},
-              "filters": {"type": "object", "description": "Metadata filters (e.g., {\"sourceType\": \"USER\"})", "additionalProperties": {"type": "string"}},
-              "similarityThreshold": {"type": "number", "default": 0.7, "description": "Minimum similarity score (0.0-1.0)"},
-              "hybridSearchEnabled": {"type": "boolean", "default": false, "description": "Enable hybrid vector+lexical search"},
-              "hybridSearchWeight": {"type": "number", "description": "Weight for hybrid search (null = auto)"},
-              "retrievedContext": {"type": "string", "default": "", "description": "Retrieved context (populated by system)"},
-              "citationCount": {"type": "integer", "default": 0, "description": "Number of citations (populated by system)"},
-              "isCompleted": {"type": "boolean", "description": "Completion status"}
-            },
-            "required": ["type", "query", "isCompleted"]
-          },
-          {
-            "type": "object",
-            "name": "AddToKnowledge",
-            "description": "Add a new document to the knowledge base. Document will be chunked, embedded, and indexed.",
-            "properties": {
-              "type": {"type": "string", "const": "AddToKnowledge"},
-              "title": {"type": "string", "description": "Document title"},
-              "content": {"type": "string", "description": "Document content to ingest"},
-              "description": {"type": "string", "description": "Optional document description"},
-              "sourceType": {"type": "string", "enum": ["USER", "INTERNAL", "REMOTE", "CACHED"], "default": "USER", "description": "Document source type"},
-              "uri": {"type": "string", "description": "Optional source URI"},
-              "metadata": {"type": "object", "description": "Arbitrary metadata", "additionalProperties": {"type": "string"}},
-              "chunkingStrategy": {"type": "string", "enum": ["recursive", "sentence", "character"], "default": "recursive", "description": "Chunking strategy"},
-              "chunkingStrategyParams": {"type": "object", "description": "Strategy parameters", "additionalProperties": {"type": "string"}},
-              "documentId": {"type": "string", "default": "", "description": "Generated ID (populated by system)"},
-              "chunksCreated": {"type": "integer", "default": 0, "description": "Chunks created (populated by system)"},
-              "isCompleted": {"type": "boolean", "description": "Completion status"}
-            },
-            "required": ["type", "title", "content", "isCompleted"]
-          }
-        ]
-      }
-    }
-  },
-  "required": ["message"]
-}
-IF YOU SEND A DIFFERENT TYPE OF RESPONSE, I WILL NOT BE ABLE TO PROCESS IT AND THIS WILL CAUSE THE PROGRAM TO CRASH.
-IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FOR A FINAL ANSWER, THEN THE LIST OF INSTRUCTIONS SHOULD BE SENT NULL.
+RETURN THE ANSWER AS A **JSON STRING** (NOT IN MARKDOWN, WITHOUT TRIPLE BACKQUOTES).  
+THE ANSWER MUST BE **VALID JSON**.  
+ONLY JSON, NOTHING ELSE.
                 """.trimIndent(),
                 isFromUser = false,
                 timestamp = 0,
@@ -881,6 +716,144 @@ IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FO
                 isMcpIntermediate = false
             )
         )
+//        allMessages.add(
+//            ChatMessage(
+//                id = "RULE 1",
+//                text = """
+//EXAMPLE RESPONSE FORMAT
+//{
+//  "type": "object",
+//  "name": "ResponseContent",
+//  "description": "Container with a message and optional list of execution instructions.",
+//  "properties": {
+//    "message": {
+//      "type": "string",
+//      "description": "Primary text message returned by the system."
+//    },
+//    "instructions": {
+//      "type": "array",
+//      "description": "Optional ordered list of instructions to perform.",
+//      "items": {
+//        "type": "object",
+//        "description": "Polymorphic instruction. Selected by the `type` discriminator.",
+//        "discriminator": {
+//          "propertyName": "type",
+//          "mapping": {
+//            "CallMCPTool": "#/components/schemas/CallMCPTool",
+//            "CallAi": "#/components/schemas/CallAi",
+//            "RetrieveFromKnowledge": "#/components/schemas/RetrieveFromKnowledge",
+//            "AddToKnowledge": "#/components/schemas/AddToKnowledge"
+//          }
+//        },
+//        "oneOf": [
+//          {
+//            "type": "object",
+//            "name": "CallMCPTool",
+//            "description": "Instruction to call an MCP tool with arguments.",
+//            "properties": {
+//              "type": {
+//                "type": "string",
+//                "const": "CallMCPTool"
+//              },
+//              "name": {
+//                "type": "string",
+//                "description": "The name of the tool to invoke."
+//              },
+//              "arguments": {
+//                "type": "object",
+//                "description": "Raw JSON object of tool arguments."
+//              },
+//              "isCompleted": {
+//                "type": "boolean",
+//                "description": "Indicates whether this instruction has completed."
+//              }
+//            },
+//            "required": ["type", "name", "arguments", "isCompleted"]
+//          },
+//          {
+//            "type": "object",
+//            "name": "CallAi",
+//            "description": "Instruction to execute an AI step and compare expected vs actual output.",
+//            "properties": {
+//              "type": {
+//                "type": "string",
+//                "const": "CallAi"
+//              },
+//              "expectedResultOfInstruction": {
+//                "type": "string",
+//                "description": "Description of the expected output from this AI instruction."
+//              },
+//              "actualResultOfInstruction": {
+//                "type": "string",
+//                "description": "Actual output produced by the AI instruction."
+//              },
+//              "isCompleted": {
+//                "type": "boolean",
+//                "description": "Indicates whether this instruction has completed."
+//              }
+//            },
+//            "required": ["type", "expectedResultOfInstruction", "isCompleted"]
+//          },
+//          {
+//            "type": "object",
+//            "name": "RetrieveFromKnowledge",
+//            "description": "Retrieve relevant context from the knowledge base using vector similarity search.",
+//            "properties": {
+//              "type": {"type": "string", "const": "RetrieveFromKnowledge"},
+//              "query": {"type": "string", "description": "Search query to find relevant context"},
+//              "topK": {"type": "integer", "default": 6, "description": "Number of results to retrieve"},
+//              "filters": {"type": "object", "description": "Metadata filters (e.g., {\"sourceType\": \"USER\"})", "additionalProperties": {"type": "string"}},
+//              "similarityThreshold": {"type": "number", "default": 0.7, "description": "Minimum similarity score (0.0-1.0)"},
+//              "hybridSearchEnabled": {"type": "boolean", "default": false, "description": "Enable hybrid vector+lexical search"},
+//              "hybridSearchWeight": {"type": "number", "description": "Weight for hybrid search (null = auto)"},
+//              "retrievedContext": {"type": "string", "default": "", "description": "Retrieved context (populated by system)"},
+//              "citationCount": {"type": "integer", "default": 0, "description": "Number of citations (populated by system)"},
+//              "isCompleted": {"type": "boolean", "description": "Completion status"}
+//            },
+//            "required": ["type", "query", "isCompleted"]
+//          },
+//          {
+//            "type": "object",
+//            "name": "AddToKnowledge",
+//            "description": "Add a new document to the knowledge base. Document will be chunked, embedded, and indexed.",
+//            "properties": {
+//              "type": {"type": "string", "const": "AddToKnowledge"},
+//              "title": {"type": "string", "description": "Document title"},
+//              "content": {"type": "string", "description": "Document content to ingest"},
+//              "description": {"type": "string", "description": "Optional document description"},
+//              "sourceType": {"type": "string", "enum": ["USER", "INTERNAL", "REMOTE", "CACHED"], "default": "USER", "description": "Document source type"},
+//              "uri": {"type": "string", "description": "Optional source URI"},
+//              "metadata": {"type": "object", "description": "Arbitrary metadata", "additionalProperties": {"type": "string"}},
+//              "chunkingStrategy": {"type": "string", "enum": ["recursive", "sentence", "character"], "default": "recursive", "description": "Chunking strategy"},
+//              "chunkingStrategyParams": {"type": "object", "description": "Strategy parameters", "additionalProperties": {"type": "string"}},
+//              "documentId": {"type": "string", "default": "", "description": "Generated ID (populated by system)"},
+//              "chunksCreated": {"type": "integer", "default": 0, "description": "Chunks created (populated by system)"},
+//              "isCompleted": {"type": "boolean", "description": "Completion status"}
+//            },
+//            "required": ["type", "title", "content", "isCompleted"]
+//          }
+//        ]
+//      }
+//    }
+//  },
+//  "required": ["message"]
+//}
+//IF YOU SEND A DIFFERENT TYPE OF RESPONSE, I WILL NOT BE ABLE TO PROCESS IT AND THIS WILL CAUSE THE PROGRAM TO CRASH.
+//IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FOR A FINAL ANSWER, THEN THE LIST OF INSTRUCTIONS SHOULD BE SENT NULL.
+//                """.trimIndent(),
+//                isFromUser = false,
+//                timestamp = 0,
+//                role = MessageRole.SYSTEM,
+//                isVisibleInUI = false,
+//                agentName = "",
+//                agentId = "",
+//                modelUsed = "",
+//                usage = null,
+//                mcpName = "",
+//                isMcpSystemPrompt = false,
+//                isMcpIntermediate = false
+//            )
+//        )
 
         allMessages.add(
             ChatMessage(
@@ -925,7 +898,7 @@ IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FO
         }
     }
 
-    override fun onShowSource(citation: org.oleg.ai.challenge.domain.rag.orchestrator.Citation, chunkContent: String) {
+    override fun onShowSource(citation: Citation, chunkContent: String) {
         _selectedCitationSource.value = CitationState.Detail(
             CitationSourceDetail(
                 citation = citation,

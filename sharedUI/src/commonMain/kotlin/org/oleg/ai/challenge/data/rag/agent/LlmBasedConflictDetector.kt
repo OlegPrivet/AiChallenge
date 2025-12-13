@@ -93,7 +93,7 @@ class LlmBasedConflictDetector(
 
             when (val result = chatApiService.sendChatCompletion(request)) {
                 is ApiResult.Success -> {
-                    val responseText = result.data.choices.firstOrNull()?.message?.content
+                    val responseText = result.data.message.content
                         ?: return conflict
 
                     // Try to parse the JSON response

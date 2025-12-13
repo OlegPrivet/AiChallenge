@@ -61,8 +61,7 @@ class LlmBasedQueryDecomposer(
 
             when (val result = chatApiService.sendChatCompletion(request)) {
                 is ApiResult.Success -> {
-                    val responseText = result.data.choices.firstOrNull()?.message?.content
-                        ?: throw IllegalStateException("No response content")
+                    val responseText = result.data.message.content
 
                     val subQueries = responseText.lines()
                         .map { it.trim() }

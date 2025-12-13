@@ -4,6 +4,7 @@ import org.oleg.ai.challenge.BuildConfig
 import org.oleg.ai.challenge.data.network.model.ChatMessage
 import org.oleg.ai.challenge.data.network.model.ChatRequest
 import org.oleg.ai.challenge.data.network.model.MessageRole
+import org.oleg.ai.challenge.data.network.model.ToolDefinition
 
 /**
  * Extension functions for easier chat API usage.
@@ -15,12 +16,14 @@ import org.oleg.ai.challenge.data.network.model.MessageRole
  * @param userMessage The user's message content
  * @param model The AI model to use (default: BuildConfig.DEFAULT_MODEL)
  * @param temperature Controls response variety (0.0 = deterministic, 2.0 = highly creative)
+ * @param tools Optional list of tools the AI can call
  * @return A ChatRequest ready to be sent to the API
  */
 fun createSimpleUserRequest(
     userMessage: String,
     model: String = BuildConfig.DEFAULT_MODEL,
-    temperature: Float? = null
+    temperature: Float? = null,
+    tools: List<ToolDefinition>? = null
 ): ChatRequest {
     return ChatRequest(
         model = model,
@@ -30,7 +33,8 @@ fun createSimpleUserRequest(
                 content = userMessage
             )
         ),
-        temperature = temperature
+        temperature = temperature,
+        tools = tools
     )
 }
 
@@ -41,13 +45,15 @@ fun createSimpleUserRequest(
  * @param userMessage The user's message content
  * @param model The AI model to use (default: BuildConfig.DEFAULT_MODEL)
  * @param temperature Controls response variety (0.0 = deterministic, 2.0 = highly creative)
+ * @param tools Optional list of tools the AI can call
  * @return A ChatRequest ready to be sent to the API
  */
 fun createRequestWithSystemPrompt(
     systemPrompt: String,
     userMessage: String,
     model: String = BuildConfig.DEFAULT_MODEL,
-    temperature: Float? = null
+    temperature: Float? = null,
+    tools: List<ToolDefinition>? = null
 ): ChatRequest {
     return ChatRequest(
         model = model,
@@ -55,7 +61,8 @@ fun createRequestWithSystemPrompt(
             ChatMessage(role = MessageRole.SYSTEM, content = systemPrompt),
             ChatMessage(role = MessageRole.USER, content = userMessage)
         ),
-        temperature = temperature
+        temperature = temperature,
+        tools = tools
     )
 }
 
@@ -67,6 +74,7 @@ fun createRequestWithSystemPrompt(
  * @param userMessage The user's message content
  * @param model The AI model to use (default: BuildConfig.DEFAULT_MODEL)
  * @param temperature Controls response variety (0.0 = deterministic, 2.0 = highly creative)
+ * @param tools Optional list of tools the AI can call
  * @return A ChatRequest ready to be sent to the API
  */
 fun createRequestWithSystemAndAssistantPrompts(
@@ -74,7 +82,8 @@ fun createRequestWithSystemAndAssistantPrompts(
     assistantPrompt: String?,
     userMessage: String,
     model: String = BuildConfig.DEFAULT_MODEL,
-    temperature: Float? = null
+    temperature: Float? = null,
+    tools: List<ToolDefinition>? = null
 ): ChatRequest {
     val messages = buildList {
         systemPrompt?.let { add(ChatMessage(role = MessageRole.SYSTEM, content = it)) }
@@ -85,7 +94,8 @@ fun createRequestWithSystemAndAssistantPrompts(
     return ChatRequest(
         model = model,
         messages = messages,
-        temperature = temperature
+        temperature = temperature,
+        tools = tools
     )
 }
 
@@ -96,17 +106,20 @@ fun createRequestWithSystemAndAssistantPrompts(
  * @param messages List of messages in the conversation
  * @param model The AI model to use (default: BuildConfig.DEFAULT_MODEL)
  * @param temperature Controls response variety (0.0 = deterministic, 2.0 = highly creative)
+ * @param tools Optional list of tools the AI can call
  * @return A ChatRequest ready to be sent to the API
  */
 fun createConversationRequest(
     messages: List<ChatMessage>,
     model: String = BuildConfig.DEFAULT_MODEL,
-    temperature: Float? = null
+    temperature: Float? = null,
+    tools: List<ToolDefinition>? = null
 ): ChatRequest {
     return ChatRequest(
         model = model,
         messages = messages,
-        temperature = temperature
+        temperature = temperature,
+        tools = tools
     )
 }
 
@@ -137,6 +150,16 @@ fun assistantMessage(content: String): ChatMessage = chatMessage(MessageRole.ASS
 fun systemMessage(content: String): ChatMessage = chatMessage(MessageRole.SYSTEM, content)
 
 /**
+ * Creates a tool response message.
+ *
+ * @param content The result content from the tool execution
+ * @param toolCallId The ID of the tool call this message is responding to
+ * @return A ChatMessage with role=TOOL
+ */
+fun toolMessage(content: String, toolCallId: String): ChatMessage =
+    ChatMessage(role = MessageRole.TOOL, content = content, toolCallId = toolCallId)
+
+/**
  * Extension function to add a user message to a list of messages.
  */
 fun List<ChatMessage>.addUserMessage(content: String): List<ChatMessage> {
@@ -155,4 +178,15 @@ fun List<ChatMessage>.addAssistantMessage(content: String): List<ChatMessage> {
  */
 fun List<ChatMessage>.addSystemMessage(content: String): List<ChatMessage> {
     return this + systemMessage(content)
+}
+
+/**
+ * Extension function to add a tool message to a list of messages.
+ *
+ * @param content The result content from the tool execution
+ * @param toolCallId The ID of the tool call this message is responding to
+ * @return A new list with the tool message appended
+ */
+fun List<ChatMessage>.addToolMessage(content: String, toolCallId: String): List<ChatMessage> {
+    return this + toolMessage(content, toolCallId)
 }

@@ -212,18 +212,8 @@ class DefaultPlannerComponent(
             )
         )
 
-        // Add tool system prompt if a tool is selected
-        val toolName = _selectedToolName.value
-        if (toolName.isNotEmpty()) {
-            val tool = _availableTools.value.find { it.name == toolName }
-            if (tool != null) {
-                val toolPrompt = chatOrchestratorService.createToolSystemPrompts(
-                    enabledTools = listOf(tool),
-                    agentId = null
-                )
-                messages.addAll(toolPrompt)
-            }
-        }
+        // Note: With native tool calling, tool system prompts are no longer needed.
+        // Tools are passed directly via ChatRequest.tools field.
 
         // Add user message
         messages.add(

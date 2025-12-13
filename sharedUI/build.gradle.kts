@@ -108,8 +108,8 @@ buildConfig {
         ?: System.getenv("OPENROUTER_API_KEY")
 
     buildConfigField("String", "OPENROUTER_API_KEY", "\"$apiKey\"")
-    buildConfigField("String", "OPENROUTER_BASE_URL", "\"http://5.129.193.224:11434/v1/\"")
-    buildConfigField("String", "DEFAULT_MODEL", "\"mistral:7b\"")
+    buildConfigField("String", "OPENROUTER_BASE_URL", "\"http://localhost:11434/api/\"")
+    buildConfigField("String", "DEFAULT_MODEL", "\"granite3.3:8b\"")
     val ollamaBaseUrl = project.findProperty("OLLAMA_BASE_URL") as? String
         ?: System.getenv("OLLAMA_BASE_URL")
         ?: "http://localhost:11434/api/"

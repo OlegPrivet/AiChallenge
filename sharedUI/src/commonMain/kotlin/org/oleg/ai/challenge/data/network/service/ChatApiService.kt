@@ -42,7 +42,7 @@ class ChatApiServiceImpl(
 ) : ChatApiService {
 
     companion object {
-        private const val CHAT_COMPLETIONS_ENDPOINT = "chat/completions"
+        private const val CHAT_COMPLETIONS_ENDPOINT = "chat"
     }
 
     override suspend fun sendChatCompletion(request: ChatRequest): ApiResult<ChatResponse> {
@@ -59,7 +59,7 @@ class ChatApiServiceImpl(
 
             val chatResponse = response.body<ChatResponse>()
             logger.v { "Parsed response: $chatResponse" }
-            logger.d { "Completion tokens used: ${chatResponse.usage.totalTokens}" }
+            logger.d { "Completion tokens used: ${chatResponse.totalDuration}" }
 
             ApiResult.Success(chatResponse)
 

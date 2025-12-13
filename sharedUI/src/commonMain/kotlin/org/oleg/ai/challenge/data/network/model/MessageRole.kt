@@ -15,5 +15,8 @@ enum class MessageRole {
     ASSISTANT,
 
     @SerialName("system")
-    SYSTEM
+    SYSTEM,
+
+    @SerialName("tool")
+    TOOL
 }

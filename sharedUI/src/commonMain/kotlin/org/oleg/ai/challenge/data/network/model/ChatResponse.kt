@@ -14,16 +14,73 @@ import kotlinx.serialization.Serializable
  * @property choices List of completion choices
  * @property usage Token usage statistics
  */
+//@Serializable
+//data class ChatResponse(
+//    val id: String,
+//    val provider: String? = null,
+//    val model: String,
+//    @SerialName("object")
+//    val objectType: String,
+//    val created: Long,
+//    val choices: List<ChatChoice>,
+//    val usage: Usage
+//)
+
 @Serializable
 data class ChatResponse(
-    val id: String,
-    val provider: String? = null,
     val model: String,
-    @SerialName("object")
-    val objectType: String,
-    val created: Long,
-    val choices: List<ChatChoice>,
-    val usage: Usage
+    @SerialName("created_at")
+    val createdAt: String,
+    val message: OllamaMessage,
+    val done: Boolean,
+    @SerialName("done_reason")
+    val doneReason: String? = null,
+    @SerialName("total_duration")
+    val totalDuration: Long? = null,
+    @SerialName("load_duration")
+    val loadDuration: Long? = null,
+    @SerialName("prompt_eval_count")
+    val promptEvalCount: Int? = null,
+    @SerialName("prompt_eval_duration")
+    val promptEvalDuration: Long? = null,
+    @SerialName("eval_count")
+    val evalCount: Int? = null,
+    @SerialName("eval_duration")
+    val evalDuration: Long? = null
+)
+
+@Serializable
+data class OllamaMessage(
+    val role: String,
+    val content: String,
+    @SerialName("tool_calls")
+    val toolCalls: List<ToolCall>? = null
+)
+
+/**
+ * Represents a tool call requested by the AI model.
+ *
+ * @property id Unique identifier for this tool call
+ * @property type The type of tool call (always "function")
+ * @property function The function call details
+ */
+@Serializable
+data class ToolCall(
+    val id: String,
+    val type: String = "function",
+    val function: FunctionCall
+)
+
+/**
+ * Represents a function call from the AI model.
+ *
+ * @property name The name of the function to call
+ * @property arguments JSON string containing the function arguments
+ */
+@Serializable
+data class FunctionCall(
+    val name: String,
+    val arguments: String
 )
 
 /**
