@@ -22,6 +22,7 @@ import org.oleg.ai.challenge.ui.chat.ChatScreen
 import org.oleg.ai.challenge.ui.planner.PlannerScreen
 import org.oleg.ai.challenge.ui.rag.DocumentManagementScreen
 import org.oleg.ai.challenge.ui.rag.StatisticsDashboardScreen
+import org.oleg.ai.challenge.ui.userprofile.UserProfileScreen
 
 /**
  * Main screen with split-screen layout.
@@ -58,7 +59,8 @@ fun MainScreen(
                 onNavigateToPlanner = component::onNavigateToPlanner,
                 onNavigateToDocuments = component::onNavigateToDocuments,
                 onNavigateToRagSettings = component::onNavigateToRagSettings,
-                onNavigateToStatistics = component::onNavigateToStatistics
+                onNavigateToStatistics = component::onNavigateToStatistics,
+                onNavigateToUserProfile = component::onNavigateToUserProfile
             )
         }
 
@@ -112,6 +114,12 @@ fun MainScreen(
 
                     is MainComponent.RightPaneChild.Statistics -> {
                         StatisticsDashboardScreen(
+                            component = instance.component
+                        )
+                    }
+
+                    is MainComponent.RightPaneChild.UserProfile -> {
+                        UserProfileScreen(
                             component = instance.component
                         )
                     }

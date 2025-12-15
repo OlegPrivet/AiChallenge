@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Add
@@ -66,6 +67,7 @@ fun ChatListPanel(
     onNavigateToDocuments: () -> Unit,
     onNavigateToRagSettings: () -> Unit,
     onNavigateToStatistics: () -> Unit,
+    onNavigateToUserProfile: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -159,6 +161,21 @@ fun ChatListPanel(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text("Statistics")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // "User Profile" button
+        Button(
+            onClick = onNavigateToUserProfile,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = "User Profile"
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("User Profile")
         }
 
         Spacer(modifier = Modifier.height(16.dp))

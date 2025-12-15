@@ -34,6 +34,7 @@ class DefaultChatComponent(
     private val chatOrchestratorService: ChatOrchestratorService,
     private val mcpClientService: McpClientService,
     private val commandOrchestrator: CommandOrchestrator,
+    private val userProfileService: org.oleg.ai.challenge.data.settings.UserProfileService,
     private val chatId: Long? = null,
 ) : ChatComponent, ComponentContext by componentContext {
 
@@ -223,6 +224,21 @@ class DefaultChatComponent(
         val messagesAgentIds = allMessages.map { it.agentId }
         if (messagesAgentIds.any { agentIds.contains(it) }) return
 
+        // Inject user profile as system prompt if complete (BEFORE agent prompts)
+        val userProfile = userProfileService.loadProfile()
+        if (userProfile.isComplete()) {
+            allMessages.add(
+                ChatMessage(
+                    id = generateId(),
+                    text = userProfile.toSystemPrompt(),
+                    isFromUser = false,
+                    role = MessageRole.SYSTEM,
+                    isVisibleInUI = false,
+                    agentId = "system"
+                )
+            )
+        }
+
         agents.forEach { agent ->
             // Add system prompt if exists
             agent.systemPrompt?.let { prompt ->
@@ -252,6 +268,12 @@ class DefaultChatComponent(
                 )
             }
         }
+
+        // Save all messages (including user profile and agent prompts) to repository
+        chatRepository.saveMessages(chatId!!, allMessages)
+
+        // Update displayed messages to include the new system prompts
+        updateDisplayedMessages()
     }
 
     override fun onTextChanged(text: String) {

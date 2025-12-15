@@ -47,6 +47,9 @@ private sealed class RightPaneConfig {
 
     @Serializable
     data object StatisticsConfig : RightPaneConfig()
+
+    @Serializable
+    data object UserProfileConfig : RightPaneConfig()
 }
 
 class DefaultMainComponent(
@@ -65,6 +68,10 @@ class DefaultMainComponent(
         componentContext: ComponentContext,
         onNavigateBack: () -> Unit
     ) -> StatisticsDashboardComponent,
+    private val userProfileComponentFactory: (
+        componentContext: ComponentContext,
+        onNavigateBack: () -> Unit
+    ) -> org.oleg.ai.challenge.component.userprofile.UserProfileComponent,
     private val agentCreationComponentFactory: (
         componentContext: ComponentContext,
         onAgentsCreated: (mainAgent: Agent, subAgents: List<Agent>) -> Unit,
@@ -135,6 +142,11 @@ class DefaultMainComponent(
             is RightPaneConfig.StatisticsConfig -> {
                 MainComponent.RightPaneChild.Statistics(
                     statisticsDashboardComponentFactory(componentContext, ::handleBackFromStatistics)
+                )
+            }
+            is RightPaneConfig.UserProfileConfig -> {
+                MainComponent.RightPaneChild.UserProfile(
+                    userProfileComponentFactory(componentContext, ::handleBackFromUserProfile)
                 )
             }
         }
@@ -220,6 +232,11 @@ class DefaultMainComponent(
         slotNavigation.activate(RightPaneConfig.StatisticsConfig)
     }
 
+    override fun onNavigateToUserProfile() {
+        _selectedChatId.value = MainComponent.NO_SELECTION
+        slotNavigation.activate(RightPaneConfig.UserProfileConfig)
+    }
+
     /**
      * Handle agents being created for the pending chat.
      */
@@ -267,6 +284,10 @@ class DefaultMainComponent(
     }
 
     private fun handleBackFromStatistics() {
+        slotNavigation.dismiss()
+    }
+
+    private fun handleBackFromUserProfile() {
         slotNavigation.dismiss()
     }
 }

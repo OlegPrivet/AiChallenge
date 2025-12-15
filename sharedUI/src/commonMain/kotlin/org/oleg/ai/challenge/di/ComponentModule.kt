@@ -12,6 +12,7 @@ import org.oleg.ai.challenge.component.rag.DefaultRagSettingsComponent
 import org.oleg.ai.challenge.component.rag.DefaultStatisticsDashboardComponent
 import org.oleg.ai.challenge.component.root.DefaultRootComponent
 import org.oleg.ai.challenge.component.root.RootComponent
+import org.oleg.ai.challenge.component.userprofile.DefaultUserProfileComponent
 import org.oleg.ai.challenge.data.AgentManager
 
 val componentModule = module {
@@ -60,6 +61,13 @@ val componentModule = module {
                             onBack = onBack
                         )
                     },
+                    userProfileComponentFactory = { userProfileContext, onBack ->
+                        DefaultUserProfileComponent(
+                            componentContext = userProfileContext,
+                            userProfileService = get<org.oleg.ai.challenge.data.settings.UserProfileService>(),
+                            onBack = onBack
+                        )
+                    },
                     agentCreationComponentFactory = { agentCreationContext, onAgentsCreated, onNavigateBack ->
                         DefaultAgentCreationComponent(
                             componentContext = agentCreationContext,
@@ -77,6 +85,7 @@ val componentModule = module {
                             chatOrchestratorService = chatOrchestratorService,
                             mcpClientService = mcpClientService,
                             commandOrchestrator = get(),
+                            userProfileService = get<org.oleg.ai.challenge.data.settings.UserProfileService>(),
                             chatId = chatId,
                         )
                     },

@@ -33,6 +33,7 @@ interface MainComponent {
     fun onNavigateToDocuments() // Navigate to Document Management
     fun onNavigateToRagSettings() // Navigate to RAG settings
     fun onNavigateToStatistics() // Navigate to Statistics Dashboard
+    fun onNavigateToUserProfile() // Navigate to User Profile
 
     companion object {
         const val NO_SELECTION = -1L
@@ -76,5 +77,10 @@ interface MainComponent {
          * Statistics dashboard screen.
          */
         data class Statistics(val component: org.oleg.ai.challenge.component.rag.StatisticsDashboardComponent) : RightPaneChild()
+
+        /**
+         * User profile screen.
+         */
+        data class UserProfile(val component: org.oleg.ai.challenge.component.userprofile.UserProfileComponent) : RightPaneChild()
     }
 }

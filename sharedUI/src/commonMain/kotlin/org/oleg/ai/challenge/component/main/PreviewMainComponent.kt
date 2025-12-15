@@ -22,4 +22,5 @@ class PreviewMainComponent : MainComponent {
     override fun onNavigateToDocuments() = Unit
     override fun onNavigateToRagSettings() = Unit
     override fun onNavigateToStatistics() = Unit
+    override fun onNavigateToUserProfile() = Unit
 }
