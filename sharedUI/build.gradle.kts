@@ -81,6 +81,8 @@ kotlin {
             implementation(libs.lucene.core)
             implementation(libs.lucene.analyzers.common)
             implementation(libs.lucene.queryparser)
+            implementation(libs.vosk)
+            implementation(libs.jna)
         }
 
         iosMain.dependencies {

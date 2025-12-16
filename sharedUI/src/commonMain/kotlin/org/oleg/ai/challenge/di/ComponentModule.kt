@@ -86,6 +86,7 @@ val componentModule = module {
                             mcpClientService = mcpClientService,
                             commandOrchestrator = get(),
                             userProfileService = get<org.oleg.ai.challenge.data.settings.UserProfileService>(),
+                            speechRecognizer = get<org.oleg.ai.challenge.data.audio.SpeechRecognizer>(),
                             chatId = chatId,
                         )
                     },

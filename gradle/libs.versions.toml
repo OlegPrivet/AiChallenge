@@ -23,6 +23,8 @@ icons = "1.7.3"
 mcp-kotlin = "0.7.7"
 meeseeks = "0.6.0-alpha02"
 lucene = "10.3.2"
+vosk = "0.3.45"
+jna = "5.7.0"
 
 [libraries]
 
@@ -59,6 +61,8 @@ meeseeks = { module = "dev.mattramotar.meeseeks:runtime", version.ref = "meeseek
 lucene-core = { module = "org.apache.lucene:lucene-core", version.ref = "lucene" }
 lucene-analyzers-common = { module = "org.apache.lucene:lucene-analysis-common", version.ref = "lucene" }
 lucene-queryparser = { module = "org.apache.lucene:lucene-queryparser", version.ref = "lucene" }
+vosk = { module = "com.alphacephei:vosk", version.ref = "vosk" }
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 
 [plugins]
 

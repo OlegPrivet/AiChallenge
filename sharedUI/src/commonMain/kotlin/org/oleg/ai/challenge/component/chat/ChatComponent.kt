@@ -5,6 +5,7 @@ import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.ChatMessage
 import org.oleg.ai.challenge.data.model.McpUiState
 import org.oleg.ai.challenge.domain.rag.orchestrator.Citation
+import org.oleg.ai.challenge.data.audio.RecordingState
 
 interface ChatComponent {
     val messages: Value<List<ChatMessage>>
@@ -23,6 +24,9 @@ interface ChatComponent {
     // For showing citation modal (nullable OK here, handled separately)
     val selectedCitationSource: Value<CitationState>
 
+    // Audio recording state
+    val recordingState: Value<RecordingState>
+
     fun onTextChanged(text: String)
     fun onSendMessage()
     fun onSummarizeConversation()
@@ -35,6 +39,11 @@ interface ChatComponent {
     fun onShowSource(citation: Citation, chunkContent: String)  // Show citation source in modal
     fun onHideSource()  // Hide citation source modal
     fun onToggleDeveloperMode(enabled: Boolean)  // Toggle developer mode
+
+    // Audio recording actions
+    fun onStartRecording()  // Start recording audio
+    fun onStopRecording()  // Stop recording and transcribe
+    fun onCancelRecording()  // Cancel recording without transcribing
 }
 
 /**

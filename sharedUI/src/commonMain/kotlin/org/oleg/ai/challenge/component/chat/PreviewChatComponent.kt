@@ -5,6 +5,7 @@ import com.arkivanov.decompose.value.Value
 import org.oleg.ai.challenge.data.model.Agent
 import org.oleg.ai.challenge.data.model.ChatMessage
 import org.oleg.ai.challenge.data.model.McpUiState
+import org.oleg.ai.challenge.data.audio.RecordingState
 
 class PreviewChatComponent(
     override val messages: Value<List<ChatMessage>> = MutableValue(
@@ -39,7 +40,8 @@ class PreviewChatComponent(
     override val mcpUiState: Value<McpUiState> = MutableValue(McpUiState()),
     override val isRagEnabled: Value<Boolean> = MutableValue(false),
     override val isDeveloperModeEnabled: Value<Boolean> = MutableValue(false),
-    override val selectedCitationSource: Value<CitationState> = MutableValue(CitationState.None)
+    override val selectedCitationSource: Value<CitationState> = MutableValue(CitationState.None),
+    override val recordingState: Value<RecordingState> = MutableValue(RecordingState.Idle)
 ) : ChatComponent {
     override fun onTextChanged(text: String) = Unit
     override fun onSendMessage() = Unit
@@ -51,4 +53,7 @@ class PreviewChatComponent(
     override fun onShowSource(citation: org.oleg.ai.challenge.domain.rag.orchestrator.Citation, chunkContent: String) = Unit
     override fun onHideSource() = Unit
     override fun onToggleDeveloperMode(enabled: Boolean) = Unit
+    override fun onStartRecording() = Unit
+    override fun onStopRecording() = Unit
+    override fun onCancelRecording() = Unit
 }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,6 +53,8 @@ import org.oleg.ai.challenge.data.model.McpUiState
 import org.oleg.ai.challenge.data.network.model.Usage
 import org.oleg.ai.challenge.theme.AppTheme
 import org.oleg.ai.challenge.ui.agentcreation.ModelSelector
+import org.oleg.ai.challenge.data.audio.RecordingState
+import org.oleg.ai.challenge.util.getPlatform
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,6 +72,7 @@ fun ChatScreen(
     val mcpUiState by component.mcpUiState.subscribeAsState()
     val isRagEnabled by component.isRagEnabled.subscribeAsState()
     val isDeveloperModeEnabled by component.isDeveloperModeEnabled.subscribeAsState()
+    val recordingState by component.recordingState.subscribeAsState()
 
     val selectedCitationSource by component.selectedCitationSource.subscribeAsState()
 
@@ -172,15 +176,72 @@ fun ChatScreen(
                     value = inputText,
                     onValueChange = component::onTextChanged,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Type a message...") },
+                    placeholder = {
+                        Text(
+                            when (recordingState) {
+                                is RecordingState.Recording -> "Recording..."
+                                is RecordingState.Processing -> "Transcribing..."
+                                is RecordingState.Error -> (recordingState as RecordingState.Error).message
+                                else -> "Type a message..."
+                            }
+                        )
+                    },
                     maxLines = 3,
-                    enabled = !isLoading
+                    enabled = !isLoading && recordingState is RecordingState.Idle,
+                    colors = if (recordingState is RecordingState.Error) {
+                        androidx.compose.material3.TextFieldDefaults.colors(
+                            focusedContainerColor = MaterialTheme.colorScheme.errorContainer,
+                            unfocusedContainerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    } else {
+                        androidx.compose.material3.TextFieldDefaults.colors()
+                    }
                 )
 
+                // Microphone button (Desktop only)
+                when (recordingState) {
+                    is RecordingState.Idle -> {
+                        // Show mic button only on desktop (JVM)
+                        if (getPlatform().name == "Desktop") {
+                            IconButton(
+                                onClick = { component.onStartRecording() },
+                                enabled = !isLoading
+                            ) {
+                                Text(
+                                    text = "\uD83C\uDFA4",  // Microphone emoji
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                        }
+                    }
+                    is RecordingState.Recording -> {
+                        IconButton(
+                            onClick = { component.onStopRecording() }
+                        ) {
+                            Text(
+                                text = "⏹",  // Stop emoji
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                    is RecordingState.Processing -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    }
+                    is RecordingState.Completed,
+                    is RecordingState.Error -> {
+                        // Brief transition state, will auto-reset to Idle
+                    }
+                }
+
+                // Send button
                 Box {
                     IconButton(
                         onClick = { component.onSendMessage() },
-                        enabled = inputText.isNotBlank() && !isLoading
+                        enabled = inputText.isNotBlank() && !isLoading && recordingState is RecordingState.Idle
                     ) {
                         Icon(
                             Icons.AutoMirrored.Filled.Send,
@@ -191,9 +252,11 @@ fun ChatScreen(
                         LoadingIndicator(mcpUiState = mcpUiState)
                     }
                 }
+
+                // Summarize button
                 IconButton(
                     onClick = component::onSummarizeConversation,
-                    enabled = isSummarizeVisibility
+                    enabled = isSummarizeVisibility && recordingState is RecordingState.Idle
                 ) {
                     Text(
                         text = "📝",

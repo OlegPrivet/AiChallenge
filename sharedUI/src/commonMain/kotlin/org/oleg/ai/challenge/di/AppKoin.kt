@@ -8,6 +8,7 @@ import org.oleg.ai.challenge.data.network.di.networkModule
 import org.oleg.ai.challenge.data.rag.di.ragModule
 import org.oleg.ai.challenge.data.rag.di.ragPlatformModules
 import org.oleg.ai.challenge.data.settings.di.settingsModule
+import org.oleg.ai.challenge.data.audio.di.audioPlatformModules
 
 fun initKoin(appDeclaration: KoinAppDeclaration = {}) = startKoin {
     appDeclaration()
@@ -19,6 +20,6 @@ fun initKoin(appDeclaration: KoinAppDeclaration = {}) = startKoin {
             ragModule,
             settingsModule,
             commandModule
-        ) + ragPlatformModules() + filePlatformModules()
+        ) + ragPlatformModules() + filePlatformModules() + audioPlatformModules()
     )
 }

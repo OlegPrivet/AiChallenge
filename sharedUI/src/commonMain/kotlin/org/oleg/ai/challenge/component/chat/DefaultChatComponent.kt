@@ -23,8 +23,11 @@ import org.oleg.ai.challenge.data.network.service.ChatOrchestratorService
 import org.oleg.ai.challenge.data.network.service.McpClientService
 import org.oleg.ai.challenge.data.repository.ChatRepository
 import org.oleg.ai.challenge.domain.command.CommandOrchestrator
+import org.oleg.ai.challenge.data.audio.SpeechRecognizer
+import org.oleg.ai.challenge.data.audio.RecordingState
 import kotlin.time.Clock.System
 import kotlin.time.ExperimentalTime
+import kotlinx.coroutines.delay
 
 class DefaultChatComponent(
     componentContext: ComponentContext,
@@ -35,6 +38,7 @@ class DefaultChatComponent(
     private val mcpClientService: McpClientService,
     private val commandOrchestrator: CommandOrchestrator,
     private val userProfileService: org.oleg.ai.challenge.data.settings.UserProfileService,
+    private val speechRecognizer: SpeechRecognizer,
     private val chatId: Long? = null,
 ) : ChatComponent, ComponentContext by componentContext {
 
@@ -80,6 +84,8 @@ class DefaultChatComponent(
     private val _isDeveloperModeEnabled = MutableValue(false)
     override val isDeveloperModeEnabled: Value<Boolean> = _isDeveloperModeEnabled
 
+    private val _recordingState = MutableValue<RecordingState>(RecordingState.Idle)
+    override val recordingState: Value<RecordingState> = _recordingState
 
     init {
         // Observe MCP UI state changes from the orchestrator
@@ -962,5 +968,90 @@ IF YOU HAVE RECEIVED ANSWERS TO ALL QUESTIONS AND YOU HAVE ENOUGH INFORMATION FO
 
     override fun onToggleDeveloperMode(enabled: Boolean) {
         _isDeveloperModeEnabled.value = enabled
+    }
+
+    // Audio recording methods
+
+    override fun onStartRecording() {
+        if (!speechRecognizer.isSupported()) {
+            logger.w { "Speech recognition not supported on this platform" }
+            _recordingState.value = RecordingState.Error("Speech recognition not available on this platform")
+            return
+        }
+
+        if (_recordingState.value !is RecordingState.Idle) {
+            logger.w { "Cannot start recording: already in progress" }
+            return
+        }
+
+        scope.launch {
+            try {
+                _recordingState.value = RecordingState.Recording
+                logger.d { "Starting audio recording" }
+                speechRecognizer.startRecording()
+            } catch (e: Exception) {
+                logger.e(e) { "Failed to start recording" }
+                _recordingState.value = RecordingState.Error("Failed to start recording: ${e.message}")
+
+                // Auto-reset to idle after 3 seconds
+                scope.launch {
+                    delay(3000)
+                    _recordingState.value = RecordingState.Idle
+                }
+            }
+        }
+    }
+
+    override fun onStopRecording() {
+        if (_recordingState.value !is RecordingState.Recording) {
+            logger.w { "Cannot stop recording: not currently recording" }
+            return
+        }
+
+        scope.launch {
+            try {
+                _recordingState.value = RecordingState.Processing
+                logger.d { "Stopping recording and transcribing" }
+
+                val transcription = speechRecognizer.stopRecordingAndTranscribe()
+
+                if (transcription.isNotBlank()) {
+                    logger.d { "Transcription successful: $transcription" }
+                    _recordingState.value = RecordingState.Completed(transcription)
+
+                    // Set transcription in input field
+                    _inputText.value = transcription
+
+                    // Reset to idle after a brief delay
+                    delay(500)
+                    _recordingState.value = RecordingState.Idle
+
+                    // Auto-send message to AI
+                    onSendMessage()
+                } else {
+                    logger.w { "Transcription is empty" }
+                    _recordingState.value = RecordingState.Error("No speech detected")
+
+                    delay(3000)
+                    _recordingState.value = RecordingState.Idle
+                }
+            } catch (e: Exception) {
+                logger.e(e) { "Failed to transcribe audio" }
+                _recordingState.value = RecordingState.Error("Transcription failed: ${e.message}")
+
+                delay(3000)
+                _recordingState.value = RecordingState.Idle
+            }
+        }
+    }
+
+    override fun onCancelRecording() {
+        if (_recordingState.value !is RecordingState.Recording) {
+            return
+        }
+
+        logger.d { "Cancelling recording" }
+        speechRecognizer.cancelRecording()
+        _recordingState.value = RecordingState.Idle
     }
 }
